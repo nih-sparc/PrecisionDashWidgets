@@ -1,17 +1,20 @@
 <script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
+import { ref } from 'vue';
+import {PennsieveDashboard} from 'pennsieve-dashboard'
+import {UMAP, DataExplorer} from './components/index'
+
+const availableWidgets = [
+  { name: 'umap', component: UMAP },
+  { name: 'data explorer', component: DataExplorer },
+]
+const dashboardOptions = ref({
+  availableWidgets
+})
 </script>
 
 <template>
-  <div>
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo" alt="Vite logo" />
-    </a>
-    <a href="https://vuejs.org/" target="_blank">
-      <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
-    </a>
-  </div>
-  <HelloWorld msg="Vite + Vue" />
+  <PennsieveDashboard :options="dashboardOptions"></PennsieveDashboard>
+
 </template>
 
 <style scoped>

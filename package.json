@@ -1,8 +1,23 @@
 {
   "name": "precisiondashwidgets",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "version": "0.1.0",
+  "main": "./dist/precisiondashwidgets.umd.js",
+  "module": "./dist/precisiondashwidgets.es.js",
+  "style": "dist/style.css",
+  "files": [
+    "dist/"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/precisiondashwidgets.es.js",
+      "require": "./dist/precisiondashwidgets.umd.js"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "sideEffects": [
+    "*.css"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
@@ -10,8 +25,8 @@
   },
   "dependencies": {
     "latest": "^0.2.0",
-    "vue": "^3.5.18",
-    "pennsieve-visualization":"0.1.6"
+    "pennsieve-visualization": "0.1.6",
+    "vue": "^3.5.18"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",
@@ -21,8 +36,9 @@
     "vue-tsc": "^3.0.5"
   },
   "peerDependencies": {
-    "element-plus": "^2.8.4",
     "@element-plus/icons-vue": "^2.3.1",
-    "pinia":"3.0.3"
+    "element-plus": "^2.11.0",
+    "pennsieve-dashboard": "0.0.2",
+    "pinia": "^3.0.3"
   }
 }

@@ -7,26 +7,39 @@
                 <el-icon color="#8300BF"><InfoFilled /></el-icon>                     
             </el-tooltip>
         </div>
-        <DataExplorer :apiKey="apiUrl"></DataExplorer>
+        <DataExplorer :pkg="srcPackage" :apiKey="apiUrl"></DataExplorer>
     </div>
 </template>
-<script setup>
+<script setup lang="ts">
 
-import { ref, defineEmits, inject, watch, onMounted, onUnmounted } from 'vue';
+import { ref, watch,unref, computed } from 'vue';
 import { ElTooltip } from "element-plus";
 import { InfoFilled } from "@element-plus/icons-vue";
 import { DataExplorer} from "pennsieve-visualization"
-import { inject,unref, computed } from 'vue'
-import { useDashboardGlobalVars } from '../useGlobalVars'
+import { useDashboardGlobalVars } from '../../useGlobalVars'
 
 const globalVars = useDashboardGlobalVars() 
+const widgetName = ref('Data Explorer');
+const apiUrl = computed(() => unref(globalVars!.apiUrl))
+const filters = computed(() => unref(globalVars!.filters))
+
+const srcPackage = filters.value.currentPackage
+
+// Write:
+// globalVars!.setFilter('query', 'astrocytes')
+// globalVars!.clearFilter('search')
+
+// Read reactively:
+watch(() => unref(globalVars!.filters).srcPackage, v => {
+    console.log("new package added "+v)
+})
+
 
 defineOptions({
     inheritAttrs: false
 })
 
-const widgetName = ref('Data Explorer');
-const apiUrl = computed(() => unref(globalVars?.apiUrl) || '')
+
 
 
 </script>

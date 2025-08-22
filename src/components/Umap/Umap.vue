@@ -12,12 +12,11 @@
 </template>
 <script setup>
 
-import { ref, defineEmits, inject, watch, onMounted, onUnmounted } from 'vue';
+import { ref, defineEmits, inject, watch, onMounted, onUnmounted, computed,unref } from 'vue';
 import { ElTooltip } from "element-plus";
 import { InfoFilled } from "@element-plus/icons-vue";
 import { UMAP} from "pennsieve-visualization"
-import { inject,unref, computed } from 'vue'
-import { useDashboardGlobalVars } from '../useGlobalVars'
+import { useDashboardGlobalVars } from '../../useGlobalVars'
 
 const globalVars = useDashboardGlobalVars() 
 
