@@ -23,7 +23,7 @@ const widgetName = ref('Data Explorer');
 const apiUrl = computed(() => unref(globalVars!.apiUrl))
 const filters = computed(() => unref(globalVars!.filters))
 
-const srcPackage = filters.value.currentPackage
+const srcPackage = filters.value.csvSrc
 
 // Write:
 // globalVars!.setFilter('query', 'astrocytes')
@@ -34,7 +34,7 @@ const srcPackage = filters.value.currentPackage
 //   console.log('red =', gv?.filters.value.red)
 // })
 // Read reactively:
-watch(() => unref(globalVars!.filters).srcPackage, v => {
+watch(() => unref(globalVars!.filters).csvSrc, v => {
     console.log("new package added "+v)
 })
 

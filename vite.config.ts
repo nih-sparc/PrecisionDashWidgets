@@ -13,22 +13,26 @@ export default defineConfig({
   build: {
     cssCodeSplit: false,
     lib: {
-      entry: './src/index.ts', 
-      name: 'PrecisionDashWidgets',
-      fileName: (format) => `PrecisionDashWidgets.${format}.js`,
+      entry: './src/components/index.js', 
+      name: 'precision-dashwidgets',
+      fileName: (format) => `precision-dashwidgets.${format}.js`,
     },
     rollupOptions: {
       //external dependencies 
       external: [
         'vue',
         '@aws-amplify/auth',
-        'pinia'],
+        'pinia',
+        'element-plus',
+        'pennsieve-dashboard'],
       output: {
         assetFileNames: (a) => a.name?.endsWith('.css') ? 'style.css' : 'assets/[name][extname]',
         globals: {
           vue: 'Vue',
           pinia: 'Pinia', 
-          '@aws-amplify/auth': 'aws_amplify_auth'
+          '@aws-amplify/auth': 'aws_amplify_auth',
+          'element-plus': 'ElementPlus',
+          'pennsieve-dashboard': 'PennsieveDashboard',
         },
       },
     },
