@@ -1,7 +1,7 @@
 <template>                 
     <slot :widgetName="widgetName"></slot>
     <div class="data-explorer-wrap">
-        <div class="data-explorer-title">
+        <div class="data-explorer-info">
             <el-tooltip placement="top-start">
                 <template #content>Type in a query or use the suggested query buttons to run on your csv file</template>
                 <el-icon color="#8300BF"><InfoFilled /></el-icon>                     
@@ -28,7 +28,11 @@ const srcPackage = filters.value.currentPackage
 // Write:
 // globalVars!.setFilter('query', 'astrocytes')
 // globalVars!.clearFilter('search')
-
+// const gv = inject<any | null>('dashboard:globalVars', null)
+//   gv.setFilter("red","#489y6")
+// watchEffect(() => {
+//   console.log('red =', gv?.filters.value.red)
+// })
 // Read reactively:
 watch(() => unref(globalVars!.filters).srcPackage, v => {
     console.log("new package added "+v)
@@ -45,6 +49,13 @@ defineOptions({
 </script>
 <style scoped lang="scss">
 .data-explorer-wrap{
-
+    margin:0 10px 0 10px;
+    .data-explorer-info{
+        line-height: 20px;
+        position: absolute;
+        right: 0;
+        margin-right: 6px;
+    }
 }
+:deep(.dashboard-header h1){ display: none;}
 </style>
