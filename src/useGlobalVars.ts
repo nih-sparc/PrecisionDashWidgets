@@ -6,6 +6,7 @@ export type FilterValue = string | number | boolean | null | string[] | number[]
 export type Filters = Record<string, FilterValue>
 
 export type GlobalVarsShape = {
+  s3Url: string | import('vue').Ref<string>
   apiUrl: string | import('vue').Ref<string>
   filters: Filters | import('vue').Ref<Filters>          // reactive bag
   setFilter: (key: string, value: FilterValue) => void   // mutate

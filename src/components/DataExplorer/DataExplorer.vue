@@ -7,23 +7,22 @@
                 <el-icon color="#8300BF"><InfoFilled /></el-icon>                     
             </el-tooltip>
         </div>
-        <DataExplorer :pkg="srcPackage" :apiKey="apiUrl"></DataExplorer>
+        <DataExplorer :srcUrl="urlSrc" ></DataExplorer>
     </div>
 </template>
 <script setup lang="ts">
 
-import { ref, watch,unref, computed } from 'vue';
+import { ref, unref, computed, watchEffect } from 'vue';
 import { ElTooltip } from "element-plus";
 import { InfoFilled } from "@element-plus/icons-vue";
 import { DataExplorer} from "pennsieve-visualization"
 import { useDashboardGlobalVars } from '../../useGlobalVars'
-
+defineOptions({
+    inheritAttrs: false
+})
 const globalVars = useDashboardGlobalVars() 
 const widgetName = ref('Data Explorer');
-const apiUrl = computed(() => unref(globalVars!.apiUrl))
-const filters = computed(() => unref(globalVars!.filters))
-
-const srcPackage = filters.value.csvSrc
+const urlSrc = computed(() => unref(globalVars!.s3Url))
 
 // Write:
 // globalVars!.setFilter('query', 'astrocytes')
@@ -34,14 +33,14 @@ const srcPackage = filters.value.csvSrc
 //   console.log('red =', gv?.filters.value.red)
 // })
 // Read reactively:
-watch(() => unref(globalVars!.filters).csvSrc, v => {
-    console.log("new package added "+v)
+// watch(() => unref(globalVars!.filters).csvSrc, v => {
+//     console.log("new package added "+v)
+// })
+
+watchEffect(()=>{
+
 })
 
-
-defineOptions({
-    inheritAttrs: false
-})
 
 
 
@@ -49,6 +48,7 @@ defineOptions({
 </script>
 <style scoped lang="scss">
 .data-explorer-wrap{
+    overflow: auto;
     margin:0 10px 0 10px;
     .data-explorer-info{
         line-height: 20px;

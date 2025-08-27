@@ -23,8 +23,7 @@ export default defineConfig({
         'vue',
         '@aws-amplify/auth',
         'pinia',
-        'element-plus',
-        'pennsieve-dashboard'],
+        'element-plus',],
       output: {
         assetFileNames: (a) => a.name?.endsWith('.css') ? 'style.css' : 'assets/[name][extname]',
         globals: {
@@ -32,7 +31,6 @@ export default defineConfig({
           pinia: 'Pinia', 
           '@aws-amplify/auth': 'aws_amplify_auth',
           'element-plus': 'ElementPlus',
-          'pennsieve-dashboard': 'PennsieveDashboard',
         },
       },
     },
