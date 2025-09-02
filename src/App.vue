@@ -60,15 +60,6 @@ const dashboardOptions = ref({
     --el-dialog-width: 90%;
     --dash-secondary: #243d8e;
   }
-/* set style vars from outside the dashboard > customize to match your application */
-.dashboard-app{
-    --el-color-primary: #243d8e;
-    --el-color-primary-light-3: #fbfdff;
-    --el-color-primary-dark-2: #546085;
-    --color:#243d8e;
-    --el-dialog-width: 90%;
-    --dash-secondary: #243d8e;
-  }
 .logo {
   height: 6em;
   padding: 1.5em;

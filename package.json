@@ -12,8 +12,6 @@
     ".": {
       "import": "./dist/precision-dashwidgets.es.js",
       "require": "./dist/precision-dashwidgets.umd.js"
-      "import": "./dist/precision-dashwidgets.es.js",
-      "require": "./dist/precision-dashwidgets.umd.js"
     },
     "./style.css": "./dist/style.css"
   },
@@ -22,7 +20,6 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
     "build": "vite build",
     "preview": "vite preview"
   },
