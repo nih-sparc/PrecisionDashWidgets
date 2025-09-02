@@ -12,6 +12,7 @@ export default defineConfig({
   },
   build: {
     cssCodeSplit: false,
+    copyPublicDir: false,
     lib: {
       entry: './src/components/index.js', 
       name: 'precision-dashwidgets',
