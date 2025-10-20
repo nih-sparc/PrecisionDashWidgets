@@ -17,7 +17,7 @@ const defaultLayout = [
     x: 0,
     y: 0,
     w: 12,
-    h: 15,
+    h: 13,
     componentKey: "GeneExpression",
     componentName: "Gene Expression",
     component: GeneExpression,

@@ -1,6 +1,6 @@
 <template>
   <div class="gene-coexpression-viewer">
-    <!-- Controls -->
+    <!-- LEFT PANE: controls + stats -->
     <div class="viewer-left">
       <div class="controls-panel">
         <div class="controls-header">
@@ -51,9 +51,8 @@
                 />
               </datalist>
             </div>
-            <div class="vs-separator">
-              <span>vs</span>
-            </div>
+
+            <div class="vs-separator"><span>vs</span></div>
 
             <div class="gene-input-wrapper">
               <label for="gene2-select">
@@ -85,15 +84,15 @@
               </datalist>
             </div>
           </div>
+
           <button
             @click="visualize"
             :disabled="!canVisualize || loading"
             class="visualize-btn"
           >
-            <span v-if="loading">
-              <span class="btn-spinner"></span>
-              Loading...
-            </span>
+            <span v-if="loading"
+              ><span class="btn-spinner"></span>Loading...</span
+            >
             <span v-else>
               <svg
                 width="16"
@@ -115,19 +114,19 @@
         </div>
       </div>
 
-      <!-- Loading State - only during initialization -->
+      <!-- Loading State (initialization only) -->
       <div v-if="loading && !viewer" class="loading-overlay">
         <div class="spinner"></div>
         <p>{{ loadingMessage }}</p>
       </div>
 
-      <!-- Error State -->
+      <!-- Error -->
       <div v-if="error" class="error-panel">
         <strong>⚠️ Error:</strong> {{ error }}
         <button @click="error = null" class="dismiss-btn">Dismiss</button>
       </div>
 
-      <!-- Stats Panel -->
+      <!-- Stats -->
       <div v-if="showStats" class="stats-panel">
         <div class="stat-item">
           <span class="stat-label">Total cells:</span>
@@ -136,70 +135,173 @@
           }}</span>
         </div>
         <div class="stat-item">
-          <span class="stat-label" :style="{ color: gene1Color }">
-            {{ gene1 }} expressing:
-          </span>
-          <span class="stat-value">
-            {{ stats.gene1Expressing.toLocaleString() }} ({{ stats.gene1Pct }}%)
-          </span>
+          <span class="stat-label" :style="{ color: gene1Color }"
+            >{{ gene1 }} expressing:</span
+          >
+          <span class="stat-value"
+            >{{ stats.gene1Expressing.toLocaleString() }} ({{
+              stats.gene1Pct
+            }}%)</span
+          >
         </div>
         <div class="stat-item">
-          <span class="stat-label" :style="{ color: gene2Color }">
-            {{ gene2 }} expressing:
-          </span>
-          <span class="stat-value">
-            {{ stats.gene2Expressing.toLocaleString() }} ({{ stats.gene2Pct }}%)
-          </span>
+          <span class="stat-label" :style="{ color: gene2Color }"
+            >{{ gene2 }} expressing:</span
+          >
+          <span class="stat-value"
+            >{{ stats.gene2Expressing.toLocaleString() }} ({{
+              stats.gene2Pct
+            }}%)</span
+          >
         </div>
         <div class="stat-item">
-          <span class="stat-label" :style="{ color: coexpressColor }">
-            Co-expressing:
-          </span>
-          <span class="stat-value">
-            {{ stats.coexpressing.toLocaleString() }} ({{
+          <span class="stat-label" :style="{ color: coexpressColor }"
+            >Co-expressing:</span
+          >
+          <span class="stat-value"
+            >{{ stats.coexpressing.toLocaleString() }} ({{
               stats.coexpressPct
-            }}%)
-          </span>
+            }}%)</span
+          >
         </div>
       </div>
     </div>
+
+    <!-- RIGHT PANE: chart + legend + gradient -->
     <div class="viewer-right">
-      <!-- Chart -->
       <div v-if="showChart || (loading && viewer)" class="chart-container">
         <div v-if="loading && viewer" class="chart-loading">
           <div class="small-spinner"></div>
           <p>{{ loadingMessage }}</p>
         </div>
+
         <div v-else style="position: relative; width: 100%; height: 100%">
           <canvas ref="chartCanvas"></canvas>
+
+          <!-- Floating Color Mixer Toggle (collapsed) -->
+          <!-- Replace your current floating-mixer-toggle button with this -->
+          <button
+            v-if="showChart || (loading && viewer)"
+            class="floating-mixer-toggle"
+            @click="gradientExpanded = !gradientExpanded"
+            :title="
+              gradientExpanded
+                ? 'Hide Color Mixing Guide'
+                : 'Open Color Mixing Guide'
+            "
+            :aria-expanded="gradientExpanded.toString()"
+          >
+            <!-- Chevron Up (collapsed) -->
+            <svg
+              v-if="!gradientExpanded"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M18 15l-6-6-6 6"></path>
+            </svg>
+
+            <!-- Chevron Down (expanded) -->
+            <svg
+              v-else
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M6 9l6 6 6-6"></path>
+            </svg>
+          </button>
+
+          <!-- Floating Color Mixer Panel (expanded) -->
+          <div
+            v-if="gradientExpanded && (showChart || (loading && viewer))"
+            class="floating-mixer-panel"
+          >
+            <div class="floating-mixer-header">
+              <span>Color Mixing Guide</span>
+              <!-- <button
+                class="floating-mixer-close"
+                @click="gradientExpanded = false"
+                title="Close Color Mixing Guide"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button> -->
+            </div>
+
+            <div class="floating-gradient-container">
+              <div>
+                <canvas
+                  ref="gradientCanvas"
+                  class="gradient-canvas"
+                  width="150"
+                  height="150"
+                  @click="renderGradientLegend"
+                ></canvas>
+                <div class="gradient-labels">
+                  <div class="y-axis-label">
+                    {{ gene2 || "Gene 2" }} Expression
+                  </div>
+                  <div class="x-axis-label">
+                    {{ gene1 || "Gene 1" }} Expression
+                  </div>
+                  <div class="axis-arrow x-arrow-right">→</div>
+                  <div class="axis-arrow y-arrow-top">↑</div>
+                </div>
+              </div>
+
+              <div class="boost-control">
+                <label for="boost-slider" class="boost-label">Boost</label>
+                <input
+                  id="boost-slider"
+                  type="range"
+                  v-model.number="coexpressionBoostFactor"
+                  min="0.1"
+                  max="100"
+                  step="0.1"
+                  @input="updateVisualization"
+                  class="boost-slider-vertical"
+                  orient="vertical"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Tooltip -->
           <div
             v-if="hoveredPoint"
             class="tooltip"
-            :style="{
-              left: tooltipPos.x + 'px',
-              top: tooltipPos.y + 'px',
-            }"
+            :style="{ left: tooltipPos.x + 'px', top: tooltipPos.y + 'px' }"
           >
-            <div class="tooltip-header">{{ hoveredPoint.cell_id }}</div>
-            <div class="tooltip-row">
-              <span class="tooltip-label">Cell Type:</span>
-              <span class="tooltip-value">{{ hoveredPoint.cell_type }}</span>
-            </div>
-            <div class="tooltip-row">
-              <span class="tooltip-label" :style="{ color: gene1Color }"
-                >{{ gene1 }}:</span
+            <div class="tooltip-header">ID: {{ hoveredPoint.cell_id }}</div>
+            <div
+              v-for="(value, key) in getTooltipData(hoveredPoint)"
+              :key="key"
+              class="tooltip-row"
+            >
+              <span class="tooltip-label" :style="getTooltipLabelStyle(key)"
+                >{{ formatLabel(key) }}:</span
               >
-              <span class="tooltip-value">{{
-                hoveredPoint.expr1.toFixed(3)
-              }}</span>
-            </div>
-            <div class="tooltip-row">
-              <span class="tooltip-label" :style="{ color: gene2Color }"
-                >{{ gene2 }}:</span
-              >
-              <span class="tooltip-value">{{
-                hoveredPoint.expr2.toFixed(3)
-              }}</span>
+              <span class="tooltip-value">{{ formatValue(key, value) }}</span>
             </div>
           </div>
         </div>
@@ -216,7 +318,7 @@
               @change="updateVisualization"
               title="Choose color for no expression"
             />
-            <span>No expression</span>
+            <span>None</span>
           </div>
           <div class="legend-item">
             <input
@@ -238,47 +340,20 @@
             />
             <span>{{ gene2 }} only</span>
           </div>
-        </div>
-
-        <!-- Color Mixing Gradient Legend -->
-        <div class="gradient-legend">
-          <div
-            class="gradient-header"
-            @click="gradientExpanded = !gradientExpanded"
-          >
-            <h4>Color Mixing Guide</h4>
-            <button class="toggle-btn" :class="{ expanded: gradientExpanded }">
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="3"
-              >
-                <polyline points="6,9 12,15 18,9"></polyline>
-              </svg>
-            </button>
-          </div>
-          <div v-if="gradientExpanded" class="gradient-container">
-            <canvas
-              ref="gradientCanvas"
-              class="gradient-canvas"
-              width="150"
-              height="150"
-              @click="renderGradientLegend"
-            ></canvas>
-            <div class="gradient-labels">
-              <div class="y-axis-label">{{ gene2 }} Expression</div>
-              <div class="x-axis-label">{{ gene1 }} Expression</div>
-              <div class="axis-arrow x-arrow-right">→</div>
-              <div class="axis-arrow y-arrow-top">↑</div>
-            </div>
+          <div class="legend-item">
+            <input
+              type="color"
+              v-model="coexpressColor"
+              class="color-picker"
+              @change="updateVisualization"
+              title="Choose color for co-expression"
+            />
+            <span>Both</span>
           </div>
         </div>
       </div>
 
-      <!-- Initial State -->
+      <!-- Empty state -->
       <div v-if="!showChart && !loading && !error" class="empty-state">
         <div class="empty-icon">🔬</div>
         <h3>Ready to visualize gene co-expression</h3>
@@ -289,17 +364,21 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from "vue";
+import {
+  ref,
+  computed,
+  onMounted,
+  onBeforeUnmount,
+  watch,
+  nextTick,
+} from "vue";
 import * as d3 from "d3";
 import createRegl from "regl";
-import { UMAPGeneViewer } from "./dataManager";
+import { UMAPGeneViewer } from "./dataManager"; // keep your import path
 
 // Props
 const props = defineProps({
-  dataPath: {
-    type: String,
-    default: "/data",
-  },
+  dataPath: { type: String, default: "/data" },
 });
 
 // Refs
@@ -311,6 +390,8 @@ const currentZoom = ref(null);
 const hoveredPoint = ref(null);
 const tooltipPos = ref({ x: 0, y: 0 });
 const pointsData = ref([]);
+const resizeObserver = ref(null);
+const lastCanvasSize = ref({ w: 0, h: 0 });
 
 // State
 const loading = ref(true);
@@ -333,11 +414,14 @@ const reductionData = ref([]);
 const gene1Data = ref(null);
 const gene2Data = ref(null);
 
-// Colors (reactive)
-const gene1Color = ref("#ff0000"); // Red
-const gene2Color = ref("#0000ff"); // Blue
-const coexpressColor = ref("#F18F01"); // Professional orange
-const noExpressionColor = ref("#CCCCCC"); // Light grey for background context
+// Colors
+const gene1Color = ref("#ff0000");
+const gene2Color = ref("#0000ff");
+const coexpressColor = ref("#FF00FF");
+const noExpressionColor = ref("#CCCCCC");
+
+// Co-expression boost factor
+const coexpressionBoostFactor = ref(1);
 
 // Stats
 const stats = ref({
@@ -351,46 +435,35 @@ const stats = ref({
 });
 
 // Computed
-const canVisualize = computed(() => {
-  return (
+const canVisualize = computed(
+  () =>
     gene1Search.value.trim() &&
     gene2Search.value.trim() &&
     gene1Search.value.trim() !== gene2Search.value.trim()
-  );
-});
+);
+const showStats = computed(() => stats.value.totalCells > 0);
+const showChart = computed(() => showStats.value);
 
-const showStats = computed(() => {
-  return stats.value.totalCells > 0;
-});
-
-const showChart = computed(() => {
-  return showStats.value;
-});
-
-// Debounce for gene search
+// Debounced search
 let searchTimeout = null;
 const debouncedSearchGenes = (geneNumber) => {
   clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => {
-    searchGenes(geneNumber);
-  }, 300);
+  searchTimeout = setTimeout(() => searchGenes(geneNumber), 300);
 };
 
-// Initialize
+// Init
 onMounted(async () => {
   try {
     loadingMessage.value = "Loading data manager...";
     viewer.value = new UMAPGeneViewer(props.dataPath);
     await viewer.value.initialize();
-
-    // Check if tSNE is available
     hasTsne.value = viewer.value.hasTsne();
-
-    // Load initial reduction data
     await loadReductionData();
-
     loading.value = false;
     loadingMessage.value = "";
+
+    // Responsive sizing (no fixed size)
+    setupResizeObserver();
   } catch (err) {
     console.error("Failed to initialize:", err);
     error.value = `Failed to load data: ${err.message}. Please check that your data files are in the correct location.`;
@@ -398,15 +471,19 @@ onMounted(async () => {
   }
 });
 
-// Watch for reduction change
-watch(selectedReduction, async (newReduction) => {
+onBeforeUnmount(() => {
+  if (resizeObserver.value) resizeObserver.value.disconnect();
+  if (reglInstance.value) reglInstance.value.destroy();
+});
+
+// Reactivity
+watch(selectedReduction, async () => {
   if (!loading.value && reductionData.value.length > 0 && canVisualize.value) {
     await loadReductionData();
     await visualize();
   }
 });
 
-// Watch for gradient expansion to render canvas when shown
 watch(gradientExpanded, async (isExpanded) => {
   if (isExpanded && showChart.value) {
     await nextTick();
@@ -430,25 +507,15 @@ async function loadReductionData() {
 
 async function searchGenes(geneNumber) {
   const searchTerm = geneNumber === 1 ? gene1Search.value : gene2Search.value;
-
   if (searchTerm.length < 2) {
-    if (geneNumber === 1) {
-      gene1Suggestions.value = [];
-    } else {
-      gene2Suggestions.value = [];
-    }
+    (geneNumber === 1 ? gene1Suggestions : gene2Suggestions).value = [];
     return;
   }
-
   try {
     const results = await viewer.value.searchGenes(searchTerm);
     const suggestions = results.map((r) => r.gene_name).slice(0, 20);
-
-    if (geneNumber === 1) {
-      gene1Suggestions.value = suggestions;
-    } else {
-      gene2Suggestions.value = suggestions;
-    }
+    (geneNumber === 1 ? gene1Suggestions : gene2Suggestions).value =
+      suggestions;
   } catch (err) {
     console.error("Gene search failed:", err);
   }
@@ -459,30 +526,23 @@ async function visualize() {
     error.value = "Please select two different genes";
     return;
   }
-
   try {
     loading.value = true;
     error.value = null;
 
-    // Set selected genes from search
     gene1.value = gene1Search.value;
     gene2.value = gene2Search.value;
 
-    // Load gene expression data
     loadingMessage.value = `Loading ${gene1.value} expression...`;
     gene1Data.value = await viewer.value.getGeneExpression(gene1.value);
 
     loadingMessage.value = `Loading ${gene2.value} expression...`;
     gene2Data.value = await viewer.value.getGeneExpression(gene2.value);
 
-    // Merge data and render
     loadingMessage.value = "Rendering visualization...";
-
-    // Set loading to false first so canvas becomes available
     loading.value = false;
     loadingMessage.value = "";
 
-    // Wait for DOM update before rendering
     await nextTick();
     await renderChart();
   } catch (err) {
@@ -492,7 +552,7 @@ async function visualize() {
   }
 }
 
-// Helper functions for WebGL rendering
+// Helpers
 function hexToRgb(hex) {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
@@ -500,17 +560,22 @@ function hexToRgb(hex) {
   return [r, g, b];
 }
 
+// Responsive sizing via ResizeObserver
+function setupResizeObserver() {
+  const container = chartCanvas.value?.parentElement?.parentElement; // chart-container -> inner wrapper -> canvas
+  if (!container) return;
+  resizeObserver.value = new ResizeObserver(async () => {
+    if (!chartCanvas.value || !showChart.value) return;
+    await renderChart(); // re-render on container size change
+  });
+  resizeObserver.value.observe(container);
+}
+
 async function renderChart() {
-  // Wait for next tick to ensure canvas is mounted
   await nextTick();
+  if (!chartCanvas.value) throw new Error("Chart canvas is not available");
 
-  // Ensure canvas is available
-  if (!chartCanvas.value) {
-    console.error("Canvas element not found");
-    throw new Error("Chart canvas is not available");
-  }
-
-  // Create expression lookup maps
+  // Expression maps
   const gene1ExprMap = new Map(
     gene1Data.value.map((d) => [d.cell_id, d.expression])
   );
@@ -518,116 +583,85 @@ async function renderChart() {
     gene2Data.value.map((d) => [d.cell_id, d.expression])
   );
 
-  // Calculate expression ranges for gradient scaling
+  // Ranges
   const allExpr1 = gene1Data.value.map((d) => d.expression);
   const allExpr2 = gene2Data.value.map((d) => d.expression);
   const maxExpr1 = Math.max(...allExpr1);
   const maxExpr2 = Math.max(...allExpr2);
 
-  // Helper function to interpolate between two colors
-  function interpolateColor(baseColor, targetColor, intensity) {
-    const base = hexToRgb(baseColor);
-    const target = hexToRgb(targetColor);
+  const threshold = 0.1;
 
-    const r = Math.round(
-      base[0] * 255 + (target[0] * 255 - base[0] * 255) * intensity
-    );
-    const g = Math.round(
-      base[1] * 255 + (target[1] * 255 - base[1] * 255) * intensity
-    );
-    const b = Math.round(
-      base[2] * 255 + (target[2] * 255 - base[2] * 255) * intensity
-    );
+  // rgb guard 0–255
+  const clamp255 = (v) => Math.max(0, Math.min(255, Math.round(v)));
+  const rgb256 = (arr) => {
+    const max = Math.max(arr[0] ?? 0, arr[1] ?? 0, arr[2] ?? 0);
+    const scaled = max <= 1 ? arr.map((c) => c * 255) : arr;
+    return scaled.map(clamp255);
+  };
 
-    return `rgb(${r}, ${g}, ${b})`;
-  }
-
-  // Helper function to blend two RGB colors
-  function blendColors(color1, color2, weight1, weight2) {
-    // Parse RGB colors
-    const parseRgb = (color) => {
-      if (color.startsWith("#")) return hexToRgb(color).map((c) => c * 255);
-      const match = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-      return match
-        ? [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])]
-        : [128, 128, 128];
-    };
-
-    const rgb1 = parseRgb(color1);
-    const rgb2 = parseRgb(color2);
-
-    // Weighted average
-    const r = Math.round(rgb1[0] * weight1 + rgb2[0] * weight2);
-    const g = Math.round(rgb1[1] * weight1 + rgb2[1] * weight2);
-    const b = Math.round(rgb1[2] * weight1 + rgb2[2] * weight2);
-
-    return `rgb(${r}, ${g}, ${b})`;
-  }
-
-  // Prepare data points with gradient colors
-  const threshold = 0.1; // Minimum threshold for expression
   const points = reductionData.value.map((cell) => {
     const expr1 = gene1ExprMap.get(cell.cell_id) || 0;
     const expr2 = gene2ExprMap.get(cell.cell_id) || 0;
 
-    // Normalize expression values (0-1)
-    const norm1 = maxExpr1 > 0 ? Math.min(expr1 / maxExpr1, 1.0) : 0;
-    const norm2 = maxExpr2 > 0 ? Math.min(expr2 / maxExpr2, 1.0) : 0;
-
-    let color = noExpressionColor.value;
-    let zIndex = 0;
-    let opacity = 1.0;
+    const norm1 = maxExpr1 > 0 ? Math.min(expr1 / maxExpr1, 1) : 0;
+    const norm2 = maxExpr2 > 0 ? Math.min(expr2 / maxExpr2, 1) : 0;
 
     const hasGene1 = expr1 > threshold;
     const hasGene2 = expr2 > threshold;
 
+    const [rBase, gBase, bBase] = rgb256(hexToRgb(noExpressionColor.value));
+    const [rG1, gG1, bG1] = rgb256(hexToRgb(gene1Color.value));
+    const [rG2, gG2, bG2] = rgb256(hexToRgb(gene2Color.value));
+    const [rCo, gCo, bCo] = rgb256(hexToRgb(coexpressColor.value));
+
+    let mixedR = rBase * (1 - norm1) * (1 - norm2);
+    let mixedG = gBase * (1 - norm1) * (1 - norm2);
+    let mixedB = bBase * (1 - norm1) * (1 - norm2);
+
+    mixedR += rG1 * norm1 * (1 - norm2);
+    mixedG += gG1 * norm1 * (1 - norm2);
+    mixedB += bG1 * norm1 * (1 - norm2);
+
+    mixedR += rG2 * (1 - norm1) * norm2;
+    mixedG += gG2 * (1 - norm1) * norm2;
+    mixedB += bG2 * (1 - norm1) * norm2;
+
+    if (norm1 > 0 && norm2 > 0) {
+      const blendWeight = norm1 * norm2;
+      const blendR = (rG1 + rG2) / 2;
+      const blendG = (gG1 + gG2) / 2;
+      const blendB = (bG1 + bG2) / 2;
+      mixedR += blendR * blendWeight;
+      mixedG += blendG * blendWeight;
+      mixedB += blendB * blendWeight;
+
+      const coexpressWeight =
+        Math.pow(blendWeight, 2) * coexpressionBoostFactor.value;
+      const newTotal = 1 + coexpressWeight;
+      mixedR = (mixedR + rCo * coexpressWeight) / newTotal;
+      mixedG = (mixedG + gCo * coexpressWeight) / newTotal;
+      mixedB = (mixedB + bCo * coexpressWeight) / newTotal;
+    }
+
+    let zIndex = 0,
+      opacity = 1;
     if (hasGene1 && hasGene2) {
-      // Co-expression: blend the two gene colors based on their relative expression
-      // First interpolate each gene color from grey
-      const gene1Contribution = interpolateColor(
-        noExpressionColor.value,
-        gene1Color.value,
-        norm1
-      );
-      const gene2Contribution = interpolateColor(
-        noExpressionColor.value,
-        gene2Color.value,
-        norm2
-      );
-
-      // Then blend the two colored contributions together
-      const gene1Weight = norm1 / (norm1 + norm2);
-      const gene2Weight = norm2 / (norm1 + norm2);
-
-      color = blendColors(
-        gene1Contribution,
-        gene2Contribution,
-        gene1Weight,
-        gene2Weight
-      );
       zIndex = 3;
       opacity = 0.9;
     } else if (hasGene1) {
-      // Gene1 only: gradient from grey to gene1 color
-      color = interpolateColor(
-        noExpressionColor.value,
-        gene1Color.value,
-        norm1
-      );
       zIndex = 2;
       opacity = 0.8;
     } else if (hasGene2) {
-      // Gene2 only: gradient from grey to gene2 color
-      color = interpolateColor(
-        noExpressionColor.value,
-        gene2Color.value,
-        norm2
-      );
       zIndex = 1;
       opacity = 0.8;
     }
 
+    const color = `rgb(${clamp255(mixedR)}, ${clamp255(mixedG)}, ${clamp255(
+      mixedB
+    )})`;
+
     return {
+      ...cell,
       x: selectedReduction.value === "umap" ? cell.umap_1 : cell.tsne_1,
       y: selectedReduction.value === "umap" ? cell.umap_2 : cell.tsne_2,
       color,
@@ -642,179 +676,110 @@ async function renderChart() {
     };
   });
 
-  // Sort by zIndex so important points render on top
-  // Lower zIndex renders first (at bottom), higher zIndex renders last (on top)
   points.sort((a, b) => a.zIndex - b.zIndex);
-  // Store points data for hover detection
   pointsData.value = points;
-  // Debug: Check the distribution after sorting
-  const zIndexCounts = {};
-  const opacityCounts = {};
-  const colorCounts = {};
 
-  points.forEach((p) => {
-    zIndexCounts[p.zIndex] = (zIndexCounts[p.zIndex] || 0) + 1;
-    opacityCounts[p.opacity] = (opacityCounts[p.opacity] || 0) + 1;
-    colorCounts[p.color] = (colorCounts[p.color] || 0) + 1;
-  });
-
-  console.log("Z-index distribution after sorting:", zIndexCounts);
-  console.log("Opacity distribution:", opacityCounts);
-  console.log("Color distribution:", colorCounts);
-  console.log("Total points:", points.length);
-  console.log(
-    "First 10 points:",
-    points.slice(0, 10).map((p) => ({
-      zIndex: p.zIndex,
-      opacity: p.opacity,
-      color: p.color,
-      expr1: p.expr1,
-      expr2: p.expr2,
-    }))
-  );
-  console.log(
-    "Last 10 points:",
-    points.slice(-10).map((p) => ({
-      zIndex: p.zIndex,
-      opacity: p.opacity,
-      color: p.color,
-      expr1: p.expr1,
-      expr2: p.expr2,
-    }))
-  );
-
-  // Calculate statistics
-  const gene1Only = points.filter(
+  // Stats
+  const g1Only = points.filter(
     (p) => p.expr1 > threshold && p.expr2 <= threshold
   ).length;
-  const gene2Only = points.filter(
+  const g2Only = points.filter(
     (p) => p.expr2 > threshold && p.expr1 <= threshold
   ).length;
-  const coexpressCount = points.filter(
+  const coexp = points.filter(
     (p) => p.expr1 > threshold && p.expr2 > threshold
   ).length;
-
   stats.value = {
     totalCells: points.length,
-    gene1Expressing: gene1Only,
-    gene1Pct: ((gene1Only / points.length) * 100).toFixed(1),
-    gene2Expressing: gene2Only,
-    gene2Pct: ((gene2Only / points.length) * 100).toFixed(1),
-    coexpressing: coexpressCount,
-    coexpressPct: ((coexpressCount / points.length) * 100).toFixed(1),
+    gene1Expressing: g1Only,
+    gene1Pct: ((g1Only / points.length) * 100).toFixed(1),
+    gene2Expressing: g2Only,
+    gene2Pct: ((g2Only / points.length) * 100).toFixed(1),
+    coexpressing: coexp,
+    coexpressPct: ((coexp / points.length) * 100).toFixed(1),
   };
 
-  // Debug the color assignments
-  console.log("Color assignments check:");
-  console.log("gene1Color.value:", gene1Color.value);
-  console.log("gene2Color.value:", gene2Color.value);
-  console.log("coexpressColor.value:", coexpressColor.value);
-  console.log(
-    "Sample points with gene1 only:",
-    points
-      .filter((p) => p.expr1 > threshold && p.expr2 <= threshold)
-      .slice(0, 3)
-      .map((p) => ({ color: p.color, expr1: p.expr1, expr2: p.expr2 }))
-  );
-  console.log(
-    "Sample points with gene2 only:",
-    points
-      .filter((p) => p.expr2 > threshold && p.expr1 <= threshold)
-      .slice(0, 3)
-      .map((p) => ({ color: p.color, expr1: p.expr1, expr2: p.expr2 }))
-  );
-  console.log(
-    "Sample points with coexpression:",
-    points
-      .filter((p) => p.expr1 > threshold && p.expr2 > threshold)
-      .slice(0, 3)
-      .map((p) => ({ color: p.color, expr1: p.expr1, expr2: p.expr2 }))
-  );
-
-  // Setup canvas and WebGL
+  // Sizing: fill container (no fixed size)
   const canvas = chartCanvas.value;
-  const container = canvas.parentElement;
+  const container = canvas.parentElement; // inner wrapper
   const rect = container.getBoundingClientRect();
+  const pad = 0; // padding already in outer container
+  const width = Math.max(1, Math.floor(rect.width - pad));
+  const height = Math.max(1, Math.floor(rect.height - pad));
+  const sizeChanged =
+    width !== lastCanvasSize.value.w || height !== lastCanvasSize.value.h;
 
-  // Set canvas size to container size
-  canvas.width = rect.width - 48; // Account for padding
-  canvas.height = rect.width - 48;
-  canvas.style.width = `${canvas.width}px`;
-  canvas.style.height = `${canvas.height}px`;
-
-  // Create REGL instance
-  try {
+  if (sizeChanged) {
+    canvas.width = width;
+    canvas.height = height;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    lastCanvasSize.value = { w: width, h: height };
+    // Recreate REGL on size change to keep viewport correct
     if (reglInstance.value) {
-      reglInstance.value.destroy();
+      try {
+        reglInstance.value.destroy();
+      } catch {}
+      reglInstance.value = null;
     }
-    reglInstance.value = createRegl(canvas);
+  }
+
+  // REGL setup
+  try {
+    if (!reglInstance.value) reglInstance.value = createRegl(canvas);
   } catch (err) {
-    console.error("WebGL not supported, falling back to canvas 2D");
+    console.error("WebGL not supported, fallback to 2D:", err);
     renderChart2D(points);
     return;
   }
 
   const regl = reglInstance.value;
 
-  // Data bounds
+  // Scales -> NDC
   const xExtent = d3.extent(points, (d) => d.x);
   const yExtent = d3.extent(points, (d) => d.y);
+  const xPad = (xExtent[1] - xExtent[0]) * 0.05;
+  const yPad = (yExtent[1] - yExtent[0]) * 0.05;
+  xExtent[0] -= xPad;
+  xExtent[1] += xPad;
+  yExtent[0] -= yPad;
+  yExtent[1] += yPad;
 
-  // Add padding
-  const xPadding = (xExtent[1] - xExtent[0]) * 0.05;
-  const yPadding = (yExtent[1] - yExtent[0]) * 0.05;
-  xExtent[0] -= xPadding;
-  xExtent[1] += xPadding;
-  yExtent[0] -= yPadding;
-  yExtent[1] += yPadding;
-
-  // Create scales
   const xScale = d3.scaleLinear().domain(xExtent).range([-1, 1]);
-
   const yScale = d3.scaleLinear().domain(yExtent).range([-1, 1]);
 
-  // Prepare WebGL data arrays
+  // Buffers
   const positions = [];
   const colors = [];
-
-  points.forEach((point) => {
-    positions.push(xScale(point.x), yScale(point.y));
-    // Handle both hex and rgb color formats
-    if (point.color.startsWith("#")) {
-      const rgb = hexToRgb(point.color);
-      colors.push(...rgb, point.opacity);
+  points.forEach((p) => {
+    positions.push(xScale(p.x), yScale(p.y));
+    if (p.color.startsWith("#")) {
+      const rgb = hexToRgb(p.color);
+      colors.push(...rgb, p.opacity);
     } else {
-      // Parse rgb() format
-      const match = point.color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-      if (match) {
+      const m = p.color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+      if (m)
         colors.push(
-          parseInt(match[1]) / 255,
-          parseInt(match[2]) / 255,
-          parseInt(match[3]) / 255,
-          point.opacity
+          parseInt(m[1]) / 255,
+          parseInt(m[2]) / 255,
+          parseInt(m[3]) / 255,
+          p.opacity
         );
-      } else {
-        // Fallback to grey
-        colors.push(0.8, 0.8, 0.8, point.opacity);
-      }
+      else colors.push(0.8, 0.8, 0.8, p.opacity);
     }
   });
 
-  // Create WebGL draw command
   const drawPoints = regl({
     frag: `
       precision mediump float;
       varying vec4 vColor;
       void main() {
-        vec2 center = gl_PointCoord - vec2(0.5);
-        float dist = length(center);
-        if (dist > 0.5) discard;
-        
-        float alpha = vColor.a * (1.0 - smoothstep(0.3, 0.5, dist));
+        vec2 c = gl_PointCoord - vec2(0.5);
+        float d = length(c);
+        if (d > 0.5) discard;
+        float alpha = vColor.a * (1.0 - smoothstep(0.3, 0.5, d));
         gl_FragColor = vec4(vColor.rgb, alpha);
-      }
-    `,
-
+      }`,
     vert: `
       precision mediump float;
       attribute vec2 position;
@@ -823,35 +788,21 @@ async function renderChart() {
       uniform float pointSize;
       uniform float scale;
       uniform vec2 translate;
-      
       void main() {
-        vec2 scaledPos = position * scale;
-        vec2 translatedPos = scaledPos + translate;
-        gl_Position = vec4(translatedPos, 0, 1);
+        vec2 pos = position * scale + translate;
+        gl_Position = vec4(pos, 0, 1);
         gl_PointSize = pointSize;
         vColor = color;
-      }
-    `,
-
-    attributes: {
-      position: positions,
-      color: colors,
-    },
-
+      }`,
+    attributes: { position: positions, color: colors },
     uniforms: {
       pointSize: regl.prop("pointSize"),
       scale: regl.prop("scale"),
       translate: regl.prop("translate"),
     },
-
     count: points.length,
     primitive: "points",
-
-    // Disable depth testing - we want painter's algorithm (last drawn = on top)
-    depth: {
-      enable: false,
-    },
-
+    depth: { enable: false },
     blend: {
       enable: true,
       func: {
@@ -864,204 +815,135 @@ async function renderChart() {
     },
   });
 
-  // Set up zoom behavior (disable wheel, we'll handle manually)
+  // Zoom: pan via d3.zoom; wheel = custom zoom-at-cursor
   const zoom = d3
     .zoom()
     .scaleExtent([0.5, 10])
-    .filter((event) => {
-      // Prevent default zoom on wheel events
-      return event.type !== "wheel";
-    })
+    .filter((event) => event.type !== "wheel")
     .on("zoom", (event) => {
-      // Handle pan events from d3
       if (event.sourceEvent && event.sourceEvent.type !== "wheel") {
         currentZoom.value = event.transform;
         render();
       }
     });
 
-  // Apply zoom for panning
   d3.select(canvas).call(zoom);
 
-  // Custom wheel zoom anchored to cursor
   canvas.addEventListener(
     "wheel",
-    function (event) {
+    (event) => {
       event.preventDefault();
+      const r = canvas.getBoundingClientRect();
+      const mx = event.clientX - r.left;
+      const my = event.clientY - r.top;
+      const tr = currentZoom.value || d3.zoomIdentity;
 
-      const rect = canvas.getBoundingClientRect();
-      const mx = event.clientX - rect.left;
-      const my = event.clientY - rect.top;
-
-      // Get current transform
-      const transform = currentZoom.value || d3.zoomIdentity;
-
-      // 1) Convert mouse position to NDC space (-1 to 1)
       const ndcX = (mx / canvas.width) * 2 - 1;
-      const ndcY = -((my / canvas.height) * 2 - 1); // Flip Y for WebGL
+      const ndcY = -((my / canvas.height) * 2 - 1);
 
-      // 2) Convert NDC to data space using current transform
-      // In your render, you do: scaledPos = position * scale; translatedPos = scaledPos + translate
-      // So to reverse: dataPos = (ndcPos - translate) / scale
-      const currentTranslateX = (2 * transform.x) / canvas.width;
-      const currentTranslateY = -(2 * transform.y) / canvas.height;
+      const tX = (2 * tr.x) / canvas.width;
+      const tY = -(2 * tr.y) / canvas.height;
 
-      const dataX = (ndcX - currentTranslateX) / transform.k;
-      const dataY = (ndcY - currentTranslateY) / transform.k;
+      const dataX = (ndcX - tX) / tr.k;
+      const dataY = (ndcY - tY) / tr.k;
 
-      // 3) Calculate new scale
       const delta = -event.deltaY * 0.002;
-      const kFactor = Math.pow(2, delta);
-      let kNew = transform.k * kFactor;
-      kNew = Math.max(0.5, Math.min(10, kNew));
+      const kNew = Math.max(0.5, Math.min(10, tr.k * Math.pow(2, delta)));
 
-      // 4) Calculate new translate in NDC space
-      // We want: ndcX = dataX * kNew + newTranslateX
       const newTranslateX = ndcX - dataX * kNew;
       const newTranslateY = ndcY - dataY * kNew;
 
-      // 5) Convert NDC translate back to pixel space for d3.zoomIdentity
       const xNew = (newTranslateX * canvas.width) / 2;
       const yNew = -(newTranslateY * canvas.height) / 2;
 
-      // Create and apply new transform
       const newTransform = d3.zoomIdentity.translate(xNew, yNew).scale(kNew);
-
       currentZoom.value = newTransform;
       render();
-
-      // Update d3 zoom state
       d3.select(canvas).property("__zoom", newTransform);
     },
     { passive: false }
   );
 
-  // Add mousemove handler for hover detection
-  canvas.addEventListener("mousemove", function (event) {
-    const rect = canvas.getBoundingClientRect();
-    const mx = event.clientX - rect.left;
-    const my = event.clientY - rect.top;
+  canvas.addEventListener("mousemove", (event) => {
+    const r = canvas.getBoundingClientRect();
+    const mx = event.clientX - r.left;
+    const my = event.clientY - r.top;
+    const tr = currentZoom.value || d3.zoomIdentity;
 
-    // Get current transform
-    const transform = currentZoom.value || d3.zoomIdentity;
-
-    // Convert mouse to NDC space
     const ndcX = (mx / canvas.width) * 2 - 1;
     const ndcY = -((my / canvas.height) * 2 - 1);
 
-    // Find closest point within hover radius
-    const hoverRadius = 10 / transform.k; // Adjust radius based on zoom
+    const hoverRadius = 10 / tr.k;
     let closestPoint = null;
     let closestDist = hoverRadius;
     let closestIndex = -1;
 
-    pointsData.value.forEach((point, index) => {
-      // Get point's NDC position (same as in vertex shader)
-      const pointNDC = xScale(point.x);
-      const pointNDCY = yScale(point.y);
-
-      // Apply current transform
-      const currentTranslateX = (2 * transform.x) / canvas.width;
-      const currentTranslateY = -(2 * transform.y) / canvas.height;
-
-      const transformedX = pointNDC * transform.k + currentTranslateX;
-      const transformedY = pointNDCY * transform.k + currentTranslateY;
-
-      // Calculate distance in NDC space
-      const dx = transformedX - ndcX;
-      const dy = transformedY - ndcY;
+    pointsData.value.forEach((p, i) => {
+      const px = xScale(p.x);
+      const py = yScale(p.y);
+      const tX = (2 * tr.x) / canvas.width;
+      const tY = -(2 * tr.y) / canvas.height;
+      const tx = px * tr.k + tX;
+      const ty = py * tr.k + tY;
+      const dx = tx - ndcX;
+      const dy = ty - ndcY;
       const dist = Math.sqrt(dx * dx + dy * dy);
-
       if (dist < closestDist) {
         closestDist = dist;
-        closestPoint = point;
-        closestIndex = index;
+        closestPoint = p;
+        closestIndex = i;
       }
     });
 
     if (closestPoint) {
       hoveredPoint.value = closestPoint;
-      tooltipPos.value = {
-        x: mx + 15,
-        y: my - 10,
-      };
-
-      // Draw enlarged point
-      drawHighlightedPoint(closestIndex, transform);
+      tooltipPos.value = { x: event.clientX + 15, y: event.clientY - 10 };
+      drawHighlightedPoint(closestIndex, tr);
     } else {
       hoveredPoint.value = null;
-      // Re-render without highlight
       render();
     }
   });
 
-  // Add mouseleave handler
-  canvas.addEventListener("mouseleave", function () {
+  canvas.addEventListener("mouseleave", () => {
     hoveredPoint.value = null;
-    render(); // Re-render to remove highlight
+    render();
   });
 
-  // Add mouseleave handler
-  canvas.addEventListener("mouseleave", function () {
-    hoveredPoint.value = null;
-  });
-
-  // Render function
   function render() {
-    regl.clear({
-      color: [1, 1, 1, 1],
-      depth: 1,
-    });
-
-    let scale, translate, pointSize;
-
+    regl.clear({ color: [1, 1, 1, 1], depth: 1 });
+    let scale = 1,
+      translate = [0, 0],
+      pointSize = 3;
     if (currentZoom.value) {
       const { k, x, y } = currentZoom.value;
       scale = k;
       translate = [(2 * x) / canvas.width, -(2 * y) / canvas.height];
-      pointSize = Math.max(2, 3 * k); // Scale point size with zoom
-    } else {
-      scale = 1;
-      translate = [0, 0];
-      pointSize = 3;
+      pointSize = Math.max(2, 3 * k);
     }
-
-    drawPoints({
-      scale,
-      translate,
-      pointSize,
-    });
+    drawPoints({ scale, translate, pointSize });
   }
-  // Function to draw highlighted/enlarged point
-  function drawHighlightedPoint(pointIndex, transform) {
-    // First render all normal points
+
+  function drawHighlightedPoint(idx, tr) {
     render();
+    const p = pointsData.value[idx];
+    const px = xScale(p.x);
+    const py = yScale(p.y);
 
-    // Then draw the highlighted point on top
-    const point = pointsData.value[pointIndex];
-    const pointNDC = xScale(point.x);
-    const pointNDCY = yScale(point.y);
-
-    // Create a single-point draw command for the highlighted point
     const highlightDraw = regl({
       frag: `
         precision mediump float;
         varying vec4 vColor;
         void main() {
-          vec2 center = gl_PointCoord - vec2(0.5);
-          float dist = length(center);
-          if (dist > 0.5) discard;
-          
-          // Add a white border
-          if (dist > 0.35) {
-            gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-          } else {
-            float alpha = vColor.a * (1.0 - smoothstep(0.2, 0.35, dist));
-            gl_FragColor = vec4(vColor.rgb, alpha);
+          vec2 c = gl_PointCoord - vec2(0.5);
+          float d = length(c);
+          if (d > 0.5) discard;
+          if (d > 0.35) gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+          else {
+            float a = vColor.a * (1.0 - smoothstep(0.2, 0.35, d));
+            gl_FragColor = vec4(vColor.rgb, a);
           }
-        }
-      `,
-
+        }`,
       vert: `
         precision mediump float;
         attribute vec2 position;
@@ -1070,53 +952,38 @@ async function renderChart() {
         uniform float pointSize;
         uniform float scale;
         uniform vec2 translate;
-        
         void main() {
-          vec2 scaledPos = position * scale;
-          vec2 translatedPos = scaledPos + translate;
-          gl_Position = vec4(translatedPos, 0, 1);
+          vec2 pos = position * scale + translate;
+          gl_Position = vec4(pos, 0, 1);
           gl_PointSize = pointSize;
           vColor = color;
-        }
-      `,
-
+        }`,
       attributes: {
-        position: [pointNDC, pointNDCY],
+        position: [px, py],
         color: (() => {
-          if (point.color.startsWith("#")) {
-            const rgb = hexToRgb(point.color);
-            return [...rgb, point.opacity];
-          } else {
-            const match = point.color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-            if (match) {
-              return [
-                parseInt(match[1]) / 255,
-                parseInt(match[2]) / 255,
-                parseInt(match[3]) / 255,
-                point.opacity,
-              ];
-            }
-            return [0.8, 0.8, 0.8, point.opacity];
+          if (p.color.startsWith("#")) {
+            const rgb = hexToRgb(p.color);
+            return [...rgb, p.opacity];
           }
+          const m = p.color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+          return m
+            ? [
+                parseInt(m[1]) / 255,
+                parseInt(m[2]) / 255,
+                parseInt(m[3]) / 255,
+                p.opacity,
+              ]
+            : [0.8, 0.8, 0.8, p.opacity];
         })(),
       },
-
       uniforms: {
-        pointSize: Math.max(12, 8 * transform.k), // Enlarged size
-        scale: transform.k,
-        translate: [
-          (2 * transform.x) / canvas.width,
-          -(2 * transform.y) / canvas.height,
-        ],
+        pointSize: Math.max(12, 8 * tr.k),
+        scale: tr.k,
+        translate: [(2 * tr.x) / canvas.width, -(2 * tr.y) / canvas.height],
       },
-
       count: 1,
       primitive: "points",
-
-      depth: {
-        enable: false,
-      },
-
+      depth: { enable: false },
       blend: {
         enable: true,
         func: {
@@ -1128,162 +995,171 @@ async function renderChart() {
         equation: "add",
       },
     });
-
     highlightDraw();
   }
-  // Initial render
+
+  // First render
   render();
 
-  // Render the gradient legend
+  // Legend
   await nextTick();
   renderGradientLegend();
 }
 
-// Fallback 2D canvas rendering for browsers without WebGL
+// 2D fallback
 function renderChart2D(points) {
   const canvas = chartCanvas.value;
   const ctx = canvas.getContext("2d");
   const container = canvas.parentElement;
   const rect = container.getBoundingClientRect();
 
-  canvas.width = rect.width - 48;
-  canvas.height = 600;
+  canvas.width = Math.max(1, Math.floor(rect.width));
+  canvas.height = Math.max(300, Math.floor(rect.height));
 
   const xExtent = d3.extent(points, (d) => d.x);
   const yExtent = d3.extent(points, (d) => d.y);
-
   const xScale = d3
     .scaleLinear()
     .domain(xExtent)
     .range([20, canvas.width - 20]);
-
   const yScale = d3
     .scaleLinear()
     .domain(yExtent)
     .range([canvas.height - 20, 20]);
 
-  // Clear canvas
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Draw points
-  points.forEach((point) => {
-    ctx.fillStyle = point.color;
-    ctx.globalAlpha = point.opacity; // Use individual point opacity
+  points.forEach((p) => {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.opacity;
     ctx.beginPath();
-    ctx.arc(xScale(point.x), yScale(point.y), 2, 0, 2 * Math.PI);
+    ctx.arc(xScale(p.x), yScale(p.y), 2, 0, 2 * Math.PI);
     ctx.fill();
   });
-
   ctx.globalAlpha = 1;
 }
 
-// Function to render the color mixing gradient legend
+// Gradient legend (merged model with boost + guards)
 function renderGradientLegend() {
   if (!gradientCanvas.value) return;
-
   const canvas = gradientCanvas.value;
   const ctx = canvas.getContext("2d");
-  const size = 150;
+  const size = Math.max(canvas.width || 150, canvas.height || 150);
+  if (canvas.width !== size) canvas.width = size;
+  if (canvas.height !== size) canvas.height = size;
 
-  // Create image data for the gradient
   const imageData = ctx.createImageData(size, size);
   const data = imageData.data;
 
-  // Helper function to interpolate between two colors
-  function interpolateColor(baseColor, targetColor, intensity) {
-    const base = hexToRgb(baseColor);
-    const target = hexToRgb(targetColor);
+  const clamp255 = (v) => Math.max(0, Math.min(255, Math.round(v)));
+  const rgb256 = (arr) => {
+    const max = Math.max(arr[0] ?? 0, arr[1] ?? 0, arr[2] ?? 0);
+    const scaled = max <= 1 ? arr.map((c) => c * 255) : arr;
+    return scaled.map(clamp255);
+  };
 
-    const r = Math.round(
-      base[0] * 255 + (target[0] * 255 - base[0] * 255) * intensity
-    );
-    const g = Math.round(
-      base[1] * 255 + (target[1] * 255 - base[1] * 255) * intensity
-    );
-    const b = Math.round(
-      base[2] * 255 + (target[2] * 255 - base[2] * 255) * intensity
-    );
-
-    return [r, g, b];
-  }
-
-  // Helper function to blend two RGB colors
-  function blendRGB(rgb1, rgb2, weight1, weight2) {
-    const r = Math.round(rgb1[0] * weight1 + rgb2[0] * weight2);
-    const g = Math.round(rgb1[1] * weight1 + rgb2[1] * weight2);
-    const b = Math.round(rgb1[2] * weight1 + rgb2[2] * weight2);
-    return [r, g, b];
-  }
+  const baseRgb = rgb256(hexToRgb(noExpressionColor.value));
+  const gene1Rgb = rgb256(hexToRgb(gene1Color.value));
+  const gene2Rgb = rgb256(hexToRgb(gene2Color.value));
+  const coexpressRgb = rgb256(hexToRgb(coexpressColor.value));
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      // Normalize coordinates (0-1), with y flipped so bottom is 0
-      const norm1 = x / (size - 1); // Gene 1 expression (x-axis)
-      const norm2 = (size - 1 - y) / (size - 1); // Gene 2 expression (y-axis, flipped)
+      const norm1 = x / (size - 1);
+      const norm2 = (size - 1 - y) / (size - 1);
 
-      let rgb;
+      let mixedR = baseRgb[0] * (1 - norm1) * (1 - norm2);
+      let mixedG = baseRgb[1] * (1 - norm1) * (1 - norm2);
+      let mixedB = baseRgb[2] * (1 - norm1) * (1 - norm2);
 
-      // Always apply gradual blending - no hard thresholds for smooth transitions
+      mixedR += gene1Rgb[0] * norm1 * (1 - norm2);
+      mixedG += gene1Rgb[1] * norm1 * (1 - norm2);
+      mixedB += gene1Rgb[2] * norm1 * (1 - norm2);
+
+      mixedR += gene2Rgb[0] * (1 - norm1) * norm2;
+      mixedG += gene2Rgb[1] * (1 - norm1) * norm2;
+      mixedB += gene2Rgb[2] * (1 - norm1) * norm2;
+
       if (norm1 > 0 && norm2 > 0) {
-        // Both genes have some expression: blend the two gene colors
-        const gene1Contribution = interpolateColor(
-          noExpressionColor.value,
-          gene1Color.value,
-          norm1
-        );
-        const gene2Contribution = interpolateColor(
-          noExpressionColor.value,
-          gene2Color.value,
-          norm2
-        );
+        const blendWeight = norm1 * norm2;
+        const blendR = (gene1Rgb[0] + gene2Rgb[0]) / 2;
+        const blendG = (gene1Rgb[1] + gene2Rgb[1]) / 2;
+        const blendB = (gene1Rgb[2] + gene2Rgb[2]) / 2;
+        mixedR += blendR * blendWeight;
+        mixedG += blendG * blendWeight;
+        mixedB += blendB * blendWeight;
 
-        const gene1Weight = norm1 / (norm1 + norm2);
-        const gene2Weight = norm2 / (norm1 + norm2);
-
-        rgb = blendRGB(
-          gene1Contribution,
-          gene2Contribution,
-          gene1Weight,
-          gene2Weight
-        );
-      } else if (norm1 > 0) {
-        // Gene1 only: smooth gradient from grey to gene1 color
-        rgb = interpolateColor(
-          noExpressionColor.value,
-          gene1Color.value,
-          norm1
-        );
-      } else if (norm2 > 0) {
-        // Gene2 only: smooth gradient from grey to gene2 color
-        rgb = interpolateColor(
-          noExpressionColor.value,
-          gene2Color.value,
-          norm2
-        );
-      } else {
-        // No expression
-        rgb = hexToRgb(noExpressionColor.value).map((c) => c * 255);
+        const coexpressWeight =
+          Math.pow(blendWeight, 2) * coexpressionBoostFactor.value;
+        const newTotal = 1 + coexpressWeight;
+        mixedR = (mixedR + coexpressRgb[0] * coexpressWeight) / newTotal;
+        mixedG = (mixedG + coexpressRgb[1] * coexpressWeight) / newTotal;
+        mixedB = (mixedB + coexpressRgb[2] * coexpressWeight) / newTotal;
       }
 
-      const index = (y * size + x) * 4;
-      data[index] = rgb[0]; // Red
-      data[index + 1] = rgb[1]; // Green
-      data[index + 2] = rgb[2]; // Blue
-      data[index + 3] = 255; // Alpha
+      const idx = (y * size + x) * 4;
+      data[idx] = clamp255(mixedR);
+      data[idx + 1] = clamp255(mixedG);
+      data[idx + 2] = clamp255(mixedB);
+      data[idx + 3] = 255;
     }
   }
-
   ctx.putImageData(imageData, 0, 0);
 }
 
-// Function to update visualization when colors change
-async function updateVisualization() {
-  if (showChart.value) {
-    await renderChart();
+// Tooltip helpers
+function getTooltipData(point) {
+  const data = {};
+  if (point.cell_type) data.cell_type = point.cell_type;
+  data[gene1.value] = point.expr1;
+  data[gene2.value] = point.expr2;
+  const exclude = new Set([
+    "cell_id",
+    "umap_1",
+    "umap_2",
+    "tsne_1",
+    "tsne_2",
+    "x",
+    "y",
+    "color",
+    "zIndex",
+    "opacity",
+    "expr1",
+    "expr2",
+    "norm1",
+    "norm2",
+  ]);
+  Object.keys(point).forEach((k) => {
+    if (!exclude.has(k) && point[k] !== null && point[k] !== undefined)
+      data[k] = point[k];
+  });
+  return data;
+}
+function getTooltipLabelStyle(key) {
+  if (key === gene1.value) return { color: gene1Color.value };
+  if (key === gene2.value) return { color: gene2Color.value };
+  return {};
+}
+function formatLabel(key) {
+  return key
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+function formatValue(key, value) {
+  if (typeof value === "number") {
+    if (key === gene1.value || key === gene2.value) return value.toFixed(3);
+    if (value < 0.01 && value > 0) return value.toExponential(2);
+    if (Math.abs(value) > 1000) return value.toLocaleString();
+    return value.toFixed(2);
   }
-  // Also update the gradient legend
+  return value;
+}
+
+// Update on palette / boost changes
+async function updateVisualization() {
+  if (showChart.value) await renderChart();
   await nextTick();
-  renderGradientLegend();
+  if (gradientExpanded.value) renderGradientLegend();
 }
 </script>
 
@@ -1342,26 +1218,22 @@ async function updateVisualization() {
   border-bottom: 1px solid #e2e8f0;
   background: linear-gradient(180deg, #fafbfc 0%, #ffffff 100%);
 }
-
 .controls-header h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
   color: #1a202c;
 }
-
 .reduction-selector {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-
 .reduction-selector label {
   font-size: 13px;
   font-weight: 500;
   color: #64748b;
 }
-
 .reduction-selector select {
   padding: 6px 12px;
   border: 1px solid #e2e8f0;
@@ -1372,11 +1244,9 @@ async function updateVisualization() {
   cursor: pointer;
   transition: all 0.2s;
 }
-
 .reduction-selector select:hover {
   border-color: #cbd5e1;
 }
-
 .reduction-selector select:focus {
   outline: none;
   border-color: #667eea;
@@ -1386,22 +1256,19 @@ async function updateVisualization() {
 .genes-section {
   padding: 24px;
 }
-
 .genes-input-group {
   grid-template-columns: 1fr auto 1fr;
-  display: Grid;
+  display: grid;
   align-items: end;
   gap: 16px;
   margin-bottom: 20px;
 }
-
 .gene-input-wrapper {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-
 .gene-input-wrapper label {
   display: flex;
   align-items: center;
@@ -1411,17 +1278,14 @@ async function updateVisualization() {
   color: #64748b;
   min-height: 20px;
 }
-
 .gene-number {
   font-weight: 600;
   color: #1a202c;
 }
-
 .selected-gene {
   font-weight: 600;
   font-size: 14px;
 }
-
 .gene-input {
   padding: 10px 14px;
   border: 2px solid #e2e8f0;
@@ -1430,35 +1294,23 @@ async function updateVisualization() {
   transition: all 0.2s;
   background: white;
   color: #1a202c;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #64748b;
-  min-height: 20px;
 }
-
 .gene-input:hover {
   border-color: #cbd5e1;
 }
-
 .gene-input:focus {
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
-
 .gene-input:disabled {
   background-color: #f8fafc;
   cursor: not-allowed;
   opacity: 0.6;
 }
-
 .gene-input::placeholder {
   color: #94a3b8;
 }
-
 .vs-separator {
   display: flex;
   align-items: center;
@@ -1488,12 +1340,10 @@ async function updateVisualization() {
   min-height: 44px;
   box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
 }
-
 .visualize-btn:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
 }
-
 .visualize-btn:disabled {
   background: #94a3b8;
   cursor: not-allowed;
@@ -1502,54 +1352,9 @@ async function updateVisualization() {
   box-shadow: none;
 }
 
-.btn-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid transparent;
-  border-top: 2px solid white;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-right: 8px;
-}
-
-@media (max-width: 768px) {
-  .controls-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
-    padding: 16px 20px;
-  }
-
-  .genes-input-group {
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .vs-separator {
-    order: 2;
-    padding-top: 0;
-    padding: 8px 0;
-  }
-
-  .gene-input-wrapper:first-child {
-    order: 1;
-  }
-
-  .gene-input-wrapper:last-child {
-    order: 3;
-  }
-
-  .genes-section {
-    padding: 20px;
-  }
-}
-
 .loading-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(4px);
   display: flex;
@@ -1558,7 +1363,6 @@ async function updateVisualization() {
   align-items: center;
   z-index: 1000;
 }
-
 .spinner {
   width: 60px;
   height: 60px;
@@ -1567,21 +1371,13 @@ async function updateVisualization() {
   border-radius: 2px;
   animation: spin 1s linear infinite;
 }
-
 @keyframes spin {
   0% {
-    transform: rotate(0deg);
+    transform: rotate(0);
   }
   100% {
     transform: rotate(360deg);
   }
-}
-
-.loading-overlay p {
-  margin-top: 24px;
-  font-size: 16px;
-  color: var(--text-primary);
-  font-weight: 500;
 }
 
 .error-panel {
@@ -1595,7 +1391,6 @@ async function updateVisualization() {
   justify-content: space-between;
   align-items: center;
 }
-
 .dismiss-btn {
   padding: 4px 12px;
   background: transparent;
@@ -1606,7 +1401,6 @@ async function updateVisualization() {
   font-size: 12px;
   transition: all 0.2s;
 }
-
 .dismiss-btn:hover {
   background: #856404;
   color: white;
@@ -1620,7 +1414,6 @@ async function updateVisualization() {
   background: white;
   border-radius: 2px;
 }
-
 .stat-label {
   font-size: 12px;
   font-weight: 600;
@@ -1628,7 +1421,6 @@ async function updateVisualization() {
   letter-spacing: 0.5px;
   color: var(--text-secondary);
 }
-
 .stat-value {
   font-size: 28px;
   font-weight: 700;
@@ -1643,11 +1435,12 @@ async function updateVisualization() {
   border-radius: 2px;
   padding: 24px;
   flex: 1;
+  position: relative;
 }
-
 .chart-container canvas {
-  width: 100%;
-  height: 100%;
+  width: auto;
+  height: auto;
+  display: block;
 }
 
 .chart-loading {
@@ -1658,7 +1451,6 @@ async function updateVisualization() {
   height: 400px;
   color: var(--text-secondary);
 }
-
 .small-spinner {
   width: 40px;
   height: 40px;
@@ -1669,79 +1461,71 @@ async function updateVisualization() {
   margin-bottom: 16px;
 }
 
-.chart-loading p {
-  font-size: 14px;
-  margin: 0;
-}
 .tooltip {
-  position: absolute;
+  position: fixed;
   background: white;
   border: 2px solid #667eea;
   border-radius: 6px;
   padding: 12px;
   pointer-events: none;
-  z-index: 1000;
+  z-index: 10000;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   min-width: 200px;
+  max-width: 300px;
   font-size: 13px;
+  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.98);
+  line-height: 1.2;
 }
-
 .tooltip-header {
   font-weight: 700;
   font-size: 14px;
   color: #1a202c;
-  margin-bottom: 8px;
-  padding-bottom: 8px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
   border-bottom: 1px solid #e2e8f0;
 }
-
 .tooltip-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 0;
-  gap: 16px;
+  padding: 2px 0;
+  gap: 8px;
 }
-
 .tooltip-label {
   font-weight: 600;
   color: #64748b;
+  margin: 0;
 }
-
 .tooltip-value {
   font-weight: 500;
   color: #1a202c;
 }
+
 .legend-container {
-  display: flex;
-  gap: 40px;
-  align-items: flex-start;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-.legend {
-  display: flex;
-  justify-content: center;
-  gap: 32px;
-  flex-wrap: wrap;
-  padding: 20px;
-  background: linear-gradient(
-    135deg,
-    rgba(102, 126, 234, 0.05) 0%,
-    rgba(118, 75, 162, 0.05) 100%
-  );
-  border: 1px solid var(--border-color);
-  border-radius: 2px;
-  flex: 0 0 auto;
+  flex-direction: column;
   align-items: center;
 }
-
+.legend {
+  flex-direction: row;
+  align-items: flex-start;
+  min-width: unset;
+  width: 100%;
+  display: flex;
+  gap: 12px;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  padding: 16px;
+}
 .legend-item {
   display: flex;
   align-items: center;
   gap: 10px;
   font-size: 14px;
   font-weight: 500;
+  flex-shrink: 0;
+  min-width: 0;
 }
 .color-picker {
   width: 28px;
@@ -1752,96 +1536,93 @@ async function updateVisualization() {
   padding: 0;
   background: none;
   outline: none;
-  transition: all 0.2s ease;
+  transition: all 0.2s;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
-
 .color-picker:hover {
   transform: scale(1.05);
   border-color: rgba(0, 0, 0, 0.2);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
-
 .color-picker:focus {
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-.gradient-legend {
-  position: relative;
+/* Floating Color Mixer */
+.floating-mixer-toggle {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 48px;
+  height: 48px;
   background: white;
-  border: 1px solid var(--border-color);
-  border-radius: 2px;
-  padding: 20px;
-  text-align: center;
-  min-width: 200px;
-  min-height: 70px;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 10;
+  color: #64748b;
+}
+.floating-mixer-toggle:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1a202c;
+  transform: translateY(-2px);
 }
 
-.gradient-header {
+.floating-mixer-panel {
+  position: absolute;
+  bottom: 51px;
+  right: 16px;
+  background: white;
+  border: 2px solid #e2e8f0;
+  z-index: 10;
+  min-width: 250px;
+  overflow: hidden;
+}
+.floating-mixer-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  cursor: pointer;
-  user-select: none;
-  transition: background-color 0.2s;
-  padding: 2px 8px;
-  border-radius: 2px;
-}
-
-.gradient-header:hover {
-  background-color: #f8fafc;
-}
-
-.gradient-header h4 {
-  margin: 0;
+  padding: 4px;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  border-bottom: 1px solid #e2e8f0;
   font-size: 14px;
   font-weight: 600;
   color: #1a202c;
 }
-
-.toggle-btn {
+.floating-mixer-close {
   background: none;
   border: none;
-  color: #64748b;
-  cursor: pointer;
   padding: 4px;
-  border-radius: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #64748b;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  transform: rotate(0deg);
 }
-
-.toggle-btn:hover {
-  background-color: #e2e8f0;
+.floating-mixer-close:hover {
+  background: rgba(100, 116, 139, 0.1);
   color: #1a202c;
 }
 
-.toggle-btn.expanded {
-  transform: rotate(180deg);
+.floating-gradient-container {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px;
 }
-
-.toggle-btn svg {
-  transition: transform 0.2s;
-}
-
-.gradient-container {
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: 10px;
-  z-index: 100;
-  display: inline-block;
-}
-
 .gradient-canvas {
   border: 2px solid #e2e8f0;
   border-radius: 2px;
 }
-
 .gradient-labels {
   position: absolute;
   top: 0;
@@ -1853,32 +1634,31 @@ async function updateVisualization() {
   font-weight: 500;
   color: #64748b;
 }
-
 .y-axis-label {
   position: absolute;
-  left: -55px;
-  top: 90%;
-  transform: rotate(-90deg) translateX(50%);
+  left: -38px;
+  bottom: 60px;
+  transform: rotate(-90deg);
   transform-origin: center;
   white-space: nowrap;
   z-index: 10;
   background: white;
   padding: 2px 4px;
   border-radius: 2px;
+  font-size: 9px;
 }
-
 .x-axis-label {
   position: absolute;
-  bottom: -15px;
-  left: 30%;
+  bottom: 5px;
+  left: 60px;
   transform: translateX(-50%);
   white-space: nowrap;
   z-index: 10;
   background: white;
   padding: 2px 4px;
   border-radius: 2px;
+  font-size: 9px;
 }
-
 .axis-arrow {
   position: absolute;
   font-size: 12px;
@@ -1886,70 +1666,51 @@ async function updateVisualization() {
   color: #94a3b8;
   z-index: 5;
 }
-
-.x-arrow-left {
-  bottom: -15px;
-  left: -8px;
-}
-
 .x-arrow-right {
-  bottom: -15px;
-  right: 0px;
+  bottom: 5px;
+  right: 60px;
 }
-
-.y-arrow-bottom {
-  left: -8px;
-  bottom: -8px;
-}
-
 .y-arrow-top {
-  left: -15px;
-  top: 0px;
+  left: 5px;
+  top: 20px;
 }
+
 .empty-state {
   text-align: center;
   padding: 80px 20px;
   color: var(--text-secondary);
 }
-
 .empty-icon {
   font-size: 64px;
   margin-bottom: 20px;
   opacity: 0.5;
 }
-
 .empty-state h3 {
   font-size: 24px;
   margin-bottom: 12px;
   color: var(--text-primary);
 }
-
 .empty-state p {
   font-size: 16px;
 }
 
 @media (max-width: 768px) {
-  .controls-panel {
-    grid-template-columns: 1fr;
-    padding: 16px;
-  }
-
-  .stats-panel {
-    grid-template-columns: 1fr;
-    padding: 16px;
-  }
-
-  .legend {
+  .controls-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 16px;
+    padding: 16px 20px;
   }
-
-  .chart-container {
-    padding: 16px;
+  .genes-input-group {
+    grid-template-columns: 1fr;
+    gap: 16px;
   }
-
-  .stat-value {
-    font-size: 24px;
+  .vs-separator {
+    order: 2;
+    padding: 8px 0;
+  }
+  .genes-section {
+    padding: 20px;
   }
 }
 </style>
