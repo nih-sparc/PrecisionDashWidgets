@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { PennsieveDashboard } from "../../PennsieveDashboard/src/components/index";
 import { GeneExpression } from "./components/index";
+import SideBySide from "./libs/SideBySide/SideBySide.vue";
 const s3Url =
   "https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/precision_human_drg_data.parquet";
 
@@ -56,10 +57,13 @@ const dashboardOptions = ref({
 </script>
 
 <template>
-  <PennsieveDashboard
+  <!-- <PennsieveDashboard
     class="dashboard-app"
     :options="dashboardOptions"
-  ></PennsieveDashboard>
+  ></PennsieveDashboard> -->
+  <SideBySide
+    data-path="https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2"
+  ></SideBySide>
 </template>
 
 <style scoped>
