@@ -57,6 +57,27 @@
             </div>
           </div>
         </div>
+        <!-- Tooltip for Left Panel -->
+        <div
+          v-if="hoveredPoint"
+          class="tooltip"
+          :style="{
+            left: leftTooltipPos.x + 'px',
+            top: leftTooltipPos.y + 'px',
+          }"
+        >
+          <div class="tooltip-header">{{ hoveredPoint.cell_id }}</div>
+          <div
+            v-for="(value, key) in getTooltipData(hoveredPoint)"
+            :key="key"
+            class="tooltip-row"
+          >
+            <span class="tooltip-label" :style="getTooltipLabelStyle(key)"
+              >{{ formatLabel(key) }}:</span
+            >
+            <span class="tooltip-value">{{ formatValue(key, value) }}</span>
+          </div>
+        </div>
       </div>
 
       <!-- Right Panel: Gene Expression UMAP -->
@@ -151,7 +172,8 @@ const rightResizeObserver = ref(null);
 const leftPointsData = ref([]);
 const rightPointsData = ref([]);
 const hoveredCellId = ref(null); // Shared hover state by cell_id
-const tooltipPos = ref({ x: 0, y: 0 });
+const hoveredFromLeft = ref(true); // Track which panel triggered the hover
+const leftTooltipPos = ref({ x: 0, y: 0 });
 
 // State
 const loading = ref(true);
@@ -186,6 +208,7 @@ let leftDrawPoints = null;
 let leftXScale = null;
 let leftYScale = null;
 let leftReglInstance = null;
+let leftLabels = [];
 
 // Right panel render variables (shared across functions)
 let rightRenderScheduled = false;
@@ -194,10 +217,26 @@ let rightXScale = null;
 let rightYScale = null;
 let rightReglInstance = null;
 
+//Computed
+const hoveredPoint = computed(() => {
+  if (!hoveredCellId.value) return null;
+  //Try left then right
+  let point = leftPointsData.value.find(
+    (p) => p.cell_id === hoveredCellId.value
+  );
+
+  if (!point && rightPointsData.value.length > 0) {
+    point = rightPointsData.value.find(
+      (p) => p.cell_id === hoveredCellId.value
+    );
+  }
+
+  return point;
+});
+
 // Initialize
 onMounted(async () => {
   try {
-    console.log("Initializing data manager...");
     manager.value = new UMAPGeneViewer(props.dataPath);
     await manager.value.initialize();
 
@@ -214,7 +253,10 @@ onMounted(async () => {
       metadataColumns.value = cols;
 
       if (cols.length > 0) {
-        selectedMetadataColumn.value = cols[0];
+        // Default to Atlas_annotations if available
+        selectedMetadataColumn.value = cols.includes("Atlas_annotations")
+          ? "Atlas_annotations"
+          : cols[0];
       }
     }
 
@@ -282,6 +324,135 @@ async function handleGeneSelect() {
   await renderGeneUMAP();
 }
 
+// Calculate label positions for metadata categories
+function calculateLabelPositions(points, column, colorScale) {
+  // Group points by category
+  const groups = new Map();
+
+  points.forEach((p) => {
+    const value = p[column];
+    if (value == null) return;
+
+    if (!groups.has(value)) {
+      groups.set(value, []);
+    }
+    groups.get(value).push(p);
+  });
+
+  const labels = [];
+
+  groups.forEach((groupPoints, value) => {
+    if (groupPoints.length === 0) return;
+
+    // Calculate centroid
+    const centroidX =
+      groupPoints.reduce((sum, p) => sum + p.x, 0) / groupPoints.length;
+    const centroidY =
+      groupPoints.reduce((sum, p) => sum + p.y, 0) / groupPoints.length;
+
+    labels.push({
+      text: String(value),
+      x: centroidX,
+      y: centroidY,
+      color: colorScale(value),
+      count: groupPoints.length,
+    });
+  });
+
+  // Simple label overlap prevention
+  const minDistance = 0.3; // Minimum distance between labels in data coordinates
+
+  for (let i = 0; i < labels.length; i++) {
+    for (let j = i + 1; j < labels.length; j++) {
+      const dx = labels[i].x - labels[j].x;
+      const dy = labels[i].y - labels[j].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < minDistance && dist > 0) {
+        // Push labels apart slightly
+        const push = (minDistance - dist) / 2;
+        const angle = Math.atan2(dy, dx);
+        labels[i].x += Math.cos(angle) * push;
+        labels[i].y += Math.sin(angle) * push;
+        labels[j].x -= Math.cos(angle) * push;
+        labels[j].y -= Math.sin(angle) * push;
+      }
+    }
+  }
+
+  return labels;
+}
+
+// Draw labels on the left canvas
+function drawLeftLabels(canvas, transform) {
+  if (!canvas || !leftXScale || !leftYScale || leftLabels.length === 0) return;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const tr = transform || d3.zoomIdentity;
+
+  ctx.save();
+
+  leftLabels.forEach((label) => {
+    const px = leftXScale(label.x);
+    const py = leftYScale(label.y);
+
+    // Transform to screen coordinates
+    const tX = (2 * tr.x) / canvas.width;
+    const tY = -(2 * tr.y) / canvas.height;
+    const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
+    const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
+
+    // Skip labels that are off-screen
+    if (
+      screenX < -100 ||
+      screenX > canvas.width + 100 ||
+      screenY < -100 ||
+      screenY > canvas.height + 100
+    ) {
+      return;
+    }
+
+    // Set font size based on zoom level
+    const fontSize = Math.max(10, Math.min(16, 12 * Math.sqrt(tr.k)));
+    ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    // Measure text for background
+    const metrics = ctx.measureText(label.text);
+    const textWidth = metrics.width;
+    const textHeight = fontSize;
+    const padding = 4;
+
+    // Draw background
+    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.fillRect(
+      screenX - textWidth / 2 - padding,
+      screenY - textHeight / 2 - padding,
+      textWidth + padding * 2,
+      textHeight + padding * 2
+    );
+
+    // Draw border with category color
+    ctx.strokeStyle = label.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(
+      screenX - textWidth / 2 - padding,
+      screenY - textHeight / 2 - padding,
+      textWidth + padding * 2,
+      textHeight + padding * 2
+    );
+
+    // Draw text
+    ctx.fillStyle = label.color;
+    ctx.fillText(label.text, screenX, screenY);
+  });
+
+  ctx.restore();
+}
+
 // Render metadata UMAP
 async function renderMetadataUMAP() {
   await nextTick();
@@ -323,6 +494,14 @@ async function renderMetadataUMAP() {
 
   // Store points for hover detection
   leftPointsData.value = points;
+
+  // Calculate label positions
+  const labelPositions = calculateLabelPositions(
+    points,
+    selectedMetadataColumn.value,
+    colorScale
+  );
+  leftLabels = labelPositions;
 
   try {
     if (leftRegl.value) {
@@ -415,7 +594,7 @@ async function renderMetadataUMAP() {
     .on("zoom", (event) => {
       if (event.sourceEvent && event.sourceEvent.type !== "wheel") {
         sharedZoom.value = event.transform;
-        render();
+        renderLeftPanel();
         // Also trigger right panel render if it exists
         if (rightRegl.value && selectedGene.value) {
           renderRightPanel();
@@ -454,7 +633,7 @@ async function renderMetadataUMAP() {
 
       const newTransform = d3.zoomIdentity.translate(xNew, yNew).scale(kNew);
       sharedZoom.value = newTransform;
-      render();
+      renderLeftPanel();
       d3.select(canvas).property("__zoom", newTransform);
 
       // Also update right panel
@@ -502,154 +681,46 @@ async function renderMetadataUMAP() {
 
     if (closestPoint) {
       hoveredCellId.value = closestPoint.cell_id;
-      tooltipPos.value = { x: event.clientX + 15, y: event.clientY - 10 };
-      drawHighlightedPoint(closestIndex, tr);
+      hoveredFromLeft.value = true;
 
-      // Trigger right panel re-render with highlight
-      if (
-        rightRegl.value &&
-        selectedGene.value &&
-        rightPointsData.value.length > 0
-      ) {
-        renderRightPanel();
-      }
+      // Calculate tooltip position based on point location on canvas
+      const px = xScale(closestPoint.x);
+      const py = yScale(closestPoint.y);
+      const tX = (2 * tr.x) / canvas.width;
+      const tY = -(2 * tr.y) / canvas.height;
+      const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
+      const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
+
+      const canvasRect = canvas.getBoundingClientRect();
+      leftTooltipPos.value = {
+        x: canvasRect.left + screenX + 15,
+        y: canvasRect.top + screenY - 10,
+      };
     } else {
       hoveredCellId.value = null;
-      render();
-      if (rightRegl.value && selectedGene.value) {
-        renderRightPanel();
-      }
     }
-  });
 
-  canvas.addEventListener("mouseleave", () => {
-    hoveredCellId.value = null;
-    render();
+    // Single coordinated render
+    renderLeftPanel();
     if (rightRegl.value && selectedGene.value) {
       renderRightPanel();
     }
   });
 
-  let renderScheduled = false;
+  canvas.addEventListener("mouseleave", () => {
+    hoveredCellId.value = null;
+    renderLeftPanel();
+    if (rightRegl.value && selectedGene.value) {
+      renderRightPanel();
+    }
+  });
 
-  function render() {
-    if (renderScheduled) return;
-    renderScheduled = true;
-
-    requestAnimationFrame(() => {
-      regl.clear({ color: [0.97, 0.98, 0.99, 1], depth: 1 }); // Matches .canvas-container background
-      let scale = 1,
-        translate = [0, 0],
-        pointSize = 3;
-
-      if (sharedZoom.value) {
-        const { k, x, y } = sharedZoom.value;
-        scale = k;
-        translate = [(2 * x) / canvas.width, -(2 * y) / canvas.height];
-        pointSize = Math.max(2, 3 * k);
-      }
-
-      drawPoints({ scale, translate, pointSize });
-      renderScheduled = false;
-    });
-  }
-  function drawHighlightedPoint(idx, tr) {
-    if (renderScheduled) return;
-    renderScheduled = true;
-
-    requestAnimationFrame(() => {
-      // Clear and draw base layer
-      regl.clear({ color: [0.97, 0.98, 0.99, 1], depth: 1 });
-      let scale = tr.k;
-      let translate = [(2 * tr.x) / canvas.width, -(2 * tr.y) / canvas.height];
-      let pointSize = Math.max(2, 3 * tr.k);
-      drawPoints({ scale, translate, pointSize });
-
-      // Draw highlight on top
-      const p = leftPointsData.value[idx];
-      const px = xScale(p.x);
-      const py = yScale(p.y);
-
-      const highlightDraw = regl({
-        frag: `
-        precision mediump float;
-        varying vec4 vColor;
-        void main() {
-          vec2 c = gl_PointCoord - vec2(0.5);
-          float d = length(c);
-          if (d > 0.5) discard;
-          if (d > 0.35) gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-          else {
-            float a = vColor.a * (1.0 - smoothstep(0.2, 0.35, d));
-            gl_FragColor = vec4(vColor.rgb, a);
-          }
-        }
-      `,
-        vert: `
-        precision mediump float;
-        attribute vec2 position;
-        attribute vec4 color;
-        varying vec4 vColor;
-        uniform float pointSize;
-        uniform float scale;
-        uniform vec2 translate;
-        void main() {
-          vec2 pos = position * scale + translate;
-          gl_Position = vec4(pos, 0, 1);
-          gl_PointSize = pointSize;
-          vColor = color;
-        }
-      `,
-        attributes: {
-          position: [px, py],
-          color: (() => {
-            if (p.color.startsWith("#")) {
-              const rgb = hexToRgb(p.color);
-              return [...rgb, p.opacity];
-            }
-            const m = p.color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-            return m
-              ? [
-                  parseInt(m[1]) / 255,
-                  parseInt(m[2]) / 255,
-                  parseInt(m[3]) / 255,
-                  p.opacity,
-                ]
-              : [0.8, 0.8, 0.8, p.opacity];
-          })(),
-        },
-        uniforms: {
-          pointSize: Math.max(12, 8 * tr.k),
-          scale: tr.k,
-          translate: [(2 * tr.x) / canvas.width, -(2 * tr.y) / canvas.height],
-        },
-        count: 1,
-        primitive: "points",
-        depth: { enable: false },
-        blend: {
-          enable: true,
-          func: {
-            srcRGB: "src alpha",
-            srcAlpha: "src alpha",
-            dstRGB: "one minus src alpha",
-            dstAlpha: "one minus src alpha",
-          },
-          equation: "add",
-        },
-      });
-
-      highlightDraw();
-      renderScheduled = false;
-    });
-  }
-
-  render();
+  renderLeftPanel();
 }
 
 function renderRightPanel() {
   if (!rightCanvas.value || !rightReglInstance || rightRenderScheduled) return;
   rightRenderScheduled = true;
-
   requestAnimationFrame(() => {
     const canvas = rightCanvas.value;
     rightReglInstance.clear({ color: [0.97, 0.98, 0.99, 1], depth: 1 });
@@ -673,6 +744,18 @@ function renderRightPanel() {
       );
       if (idx !== -1) {
         drawRightHighlightedPoint(idx, sharedZoom.value);
+
+        // Update tooltip position
+        const p = rightPointsData.value[idx];
+        const px = rightXScale(p.x);
+        const py = rightYScale(p.y);
+        const tr = sharedZoom.value;
+        const tX = (2 * tr.x) / canvas.width;
+        const tY = -(2 * tr.y) / canvas.height;
+        const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
+        const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
+
+        const canvasRect = canvas.getBoundingClientRect();
       }
     }
 
@@ -777,6 +860,9 @@ function renderLeftPanel() {
 
     leftDrawPoints({ scale, translate, pointSize });
 
+    // Draw labels
+    drawLeftLabels(canvas, sharedZoom.value);
+
     // Draw highlight if there's a hovered cell
     if (hoveredCellId.value) {
       const idx = leftPointsData.value.findIndex(
@@ -784,6 +870,22 @@ function renderLeftPanel() {
       );
       if (idx !== -1) {
         drawLeftHighlightedPoint(idx, sharedZoom.value);
+
+        // Update tooltip position
+        const p = leftPointsData.value[idx];
+        const px = leftXScale(p.x);
+        const py = leftYScale(p.y);
+        const tr = sharedZoom.value;
+        const tX = (2 * tr.x) / canvas.width;
+        const tY = -(2 * tr.y) / canvas.height;
+        const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
+        const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
+
+        const canvasRect = canvas.getBoundingClientRect();
+        leftTooltipPos.value = {
+          x: canvasRect.left + screenX + 15,
+          y: canvasRect.top + screenY - 10,
+        };
       }
     }
 
@@ -867,6 +969,7 @@ function drawLeftHighlightedPoint(idx, tr) {
   });
   highlightDraw();
 }
+
 // Render gene expression UMAP
 async function renderGeneUMAP() {
   if (!selectedGene.value) return;
@@ -1011,7 +1114,7 @@ async function renderGeneUMAP() {
       .on("zoom", (event) => {
         if (event.sourceEvent && event.sourceEvent.type !== "wheel") {
           sharedZoom.value = event.transform;
-          render();
+          renderRightPanel();
           // Also trigger left panel render
           if (leftRegl.value && selectedMetadataColumn.value) {
             d3.select(leftCanvas.value).property("__zoom", event.transform);
@@ -1051,7 +1154,7 @@ async function renderGeneUMAP() {
 
         const newTransform = d3.zoomIdentity.translate(xNew, yNew).scale(kNew);
         sharedZoom.value = newTransform;
-        render();
+        renderRightPanel();
         d3.select(canvas).property("__zoom", newTransform);
 
         // Also update left panel
@@ -1103,156 +1206,91 @@ async function renderGeneUMAP() {
 
       if (closestPoint) {
         hoveredCellId.value = closestPoint.cell_id;
-        tooltipPos.value = { x: event.clientX + 15, y: event.clientY - 10 };
-        drawHighlightedPoint(closestIndex, tr);
+        hoveredFromLeft.value = false;
 
-        // Trigger left panel re-render with highlight
-        if (
-          leftRegl.value &&
-          selectedMetadataColumn.value &&
-          leftPointsData.value.length > 0
-        ) {
-          renderLeftPanel();
-        }
+        // Calculate tooltip position based on point location on canvas
+        const px = xScale(closestPoint.x);
+        const py = yScale(closestPoint.y);
+        const tX = (2 * tr.x) / canvas.width;
+        const tY = -(2 * tr.y) / canvas.height;
+        const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
+        const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
+
+        const canvasRect = canvas.getBoundingClientRect();
       } else {
         hoveredCellId.value = null;
-        render();
-        if (leftRegl.value && selectedMetadataColumn.value) {
-          renderLeftPanel();
-        }
       }
-    });
 
-    canvas.addEventListener("mouseleave", () => {
-      hoveredCellId.value = null;
-      render();
+      // Single coordinated render
+      renderRightPanel();
       if (leftRegl.value && selectedMetadataColumn.value) {
         renderLeftPanel();
       }
     });
 
-    let renderScheduled = false;
+    canvas.addEventListener("mouseleave", () => {
+      hoveredCellId.value = null;
+      renderRightPanel();
+      if (leftRegl.value && selectedMetadataColumn.value) {
+        renderLeftPanel();
+      }
+    });
 
-    function render() {
-      if (renderScheduled) return;
-      renderScheduled = true;
-
-      requestAnimationFrame(() => {
-        regl.clear({ color: [0.97, 0.98, 0.99, 1], depth: 1 });
-        let scale = 1,
-          translate = [0, 0],
-          pointSize = 3;
-
-        if (sharedZoom.value) {
-          const { k, x, y } = sharedZoom.value;
-          scale = k;
-          translate = [(2 * x) / canvas.width, -(2 * y) / canvas.height];
-          pointSize = Math.max(2, 3 * k);
-        }
-
-        drawPoints({ scale, translate, pointSize });
-        renderScheduled = false;
-      });
-    }
-
-    function drawHighlightedPoint(idx, tr) {
-      if (renderScheduled) return;
-      renderScheduled = true;
-
-      requestAnimationFrame(() => {
-        // Clear and draw base layer
-        regl.clear({ color: [0.97, 0.98, 0.99, 1], depth: 1 });
-        let scale = tr.k;
-        let translate = [
-          (2 * tr.x) / canvas.width,
-          -(2 * tr.y) / canvas.height,
-        ];
-        let pointSize = Math.max(2, 3 * tr.k);
-        drawPoints({ scale, translate, pointSize });
-
-        // Draw highlight on top
-        const p = rightPointsData.value[idx];
-        const px = xScale(p.x);
-        const py = yScale(p.y);
-
-        const highlightDraw = regl({
-          frag: `
-        precision mediump float;
-        varying vec4 vColor;
-        void main() {
-          vec2 c = gl_PointCoord - vec2(0.5);
-          float d = length(c);
-          if (d > 0.5) discard;
-          if (d > 0.35) gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-          else {
-            float a = vColor.a * (1.0 - smoothstep(0.2, 0.35, d));
-            gl_FragColor = vec4(vColor.rgb, a);
-          }
-        }
-      `,
-          vert: `
-        precision mediump float;
-        attribute vec2 position;
-        attribute vec4 color;
-        varying vec4 vColor;
-        uniform float pointSize;
-        uniform float scale;
-        uniform vec2 translate;
-        void main() {
-          vec2 pos = position * scale + translate;
-          gl_Position = vec4(pos, 0, 1);
-          gl_PointSize = pointSize;
-          vColor = color;
-        }
-      `,
-          attributes: {
-            position: [px, py],
-            color: (() => {
-              if (p.color.startsWith("#")) {
-                const rgb = hexToRgb(p.color);
-                return [...rgb, p.opacity];
-              }
-              const m = p.color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-              return m
-                ? [
-                    parseInt(m[1]) / 255,
-                    parseInt(m[2]) / 255,
-                    parseInt(m[3]) / 255,
-                    p.opacity,
-                  ]
-                : [0.8, 0.8, 0.8, p.opacity];
-            })(),
-          },
-          uniforms: {
-            pointSize: Math.max(12, 8 * tr.k),
-            scale: tr.k,
-            translate: [(2 * tr.x) / canvas.width, -(2 * tr.y) / canvas.height],
-          },
-          count: 1,
-          primitive: "points",
-          depth: { enable: false },
-          blend: {
-            enable: true,
-            func: {
-              srcRGB: "src alpha",
-              srcAlpha: "src alpha",
-              dstRGB: "one minus src alpha",
-              dstAlpha: "one minus src alpha",
-            },
-            equation: "add",
-          },
-        });
-
-        highlightDraw();
-        renderScheduled = false;
-      });
-    }
-
-    render();
+    renderRightPanel();
   } catch (err) {
     console.error("Failed to render gene UMAP:", err);
     geneLoading.value = false;
   }
+}
+
+// Tooltip helpers
+function getTooltipData(point) {
+  const data = {};
+
+  // Exclude these keys from display
+  const exclude = new Set([
+    "cell_id",
+    "umap_1",
+    "umap_2",
+    "tsne_1",
+    "tsne_2",
+    "x",
+    "y",
+    "color",
+    "opacity",
+    "expr",
+    "norm",
+  ]);
+
+  // Add all non-excluded keys
+  Object.keys(point).forEach((k) => {
+    if (!exclude.has(k) && point[k] !== null && point[k] !== undefined) {
+      data[k] = point[k];
+    }
+  });
+
+  return data;
+}
+function getTooltipLabelStyle(key) {
+  return {};
+}
+function formatLabel(key) {
+  return key
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+const gene1Color = ref("#ff0000");
+const gene2Color = ref("#0000ff");
+function formatValue(key, value) {
+  if (typeof value === "number") {
+    if (key === selectedGene.value || key === selectedMetadataColumn.value)
+      return value.toFixed(3);
+    if (value < 0.01 && value > 0) return value.toExponential(2);
+    if (Math.abs(value) > 1000) return value.toLocaleString();
+    return value.toFixed(2);
+  }
+  return value;
 }
 </script>
 
@@ -1467,6 +1505,50 @@ async function renderGeneUMAP() {
 
 .legend-label {
   font-weight: 500;
+}
+.tooltip {
+  position: fixed;
+  background: white;
+  border: 2px solid #667eea;
+  border-radius: 6px;
+  padding: 12px;
+  pointer-events: none;
+  z-index: 10000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
+  max-width: 300px;
+  font-size: 13px;
+  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.98);
+  line-height: 1.2;
+}
+.tooltip-header {
+  font-weight: 700;
+  font-size: 14px;
+  color: #1a202c;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+  gap: 8px;
+}
+.tooltip-label {
+  font-weight: 600;
+  color: #64748b;
+  margin: 0;
+}
+.tooltip-value {
+  font-weight: 500;
+  color: #1a202c;
+}
+
+.tooltip-gene {
+  border-color: #0000ff;
 }
 
 .gradient-bar {
