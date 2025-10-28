@@ -1,19 +1,20 @@
 <template>
   <slot></slot>
-  <div class="gene-coexpression-wrap">
-    <GeneCoexpressionViewer
-      :gene1="PrecisionVars.selectedGene1 ?? undefined"
-      :gene2="PrecisionVars.selectedGene2 ?? undefined"
-      @update:Vars="PrecisionVars.setSelection"
+  <div class="side-by-side-wrap">
+    <SideBySide
+      :gene="PrecisionVars.selectedGene ?? undefined"
+      :metadataColumn="PrecisionVars.selectedMetadataColumn ?? undefined"
+      @update:Vars="(key, value) => PrecisionVars.setSelection(key, value)"
       data-path="https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2"
-    ></GeneCoexpressionViewer>
+    ></SideBySide>
   </div>
 </template>
 <script setup lang="ts">
 import { ref, unref, computed, watchEffect } from "vue";
-import { usePrecisionStore } from "../../stores/precisionVars";
-import GeneCoexpressionViewer from "../../libs/GeneExpressionViewer/GeneCoexpressionViewer.vue";
+
+import SideBySide from "../../libs/SideBySide/SideBySide.vue";
 import { useDashboardGlobalVars } from "../../useGlobalVars";
+import { usePrecisionStore } from "../../stores/precisionVars";
 defineOptions({
   inheritAttrs: false,
 });
@@ -22,8 +23,8 @@ const PrecisionVars = usePrecisionStore();
 const urlSrc = computed(() => unref(globalVars!.s3Url));
 </script>
 <style scoped lang="scss">
-.gene-coexpression-wrap {
-  height: 100%;
+.side-by-side-wrap {
+  height: 90%;
   padding: 20px;
   background: white;
 }

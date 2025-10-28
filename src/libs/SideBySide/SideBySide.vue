@@ -13,127 +13,154 @@
 
     <!-- Main Dashboard -->
     <div v-else class="dashboard">
-      <!-- Left Panel: Metadata UMAP -->
-      <div class="panel">
-        <div class="header">
-          <h3 class="title">Cell Metadata</h3>
-          <div class="filter-placeholder">
-            <!-- Filter will go here -->
-          </div>
-        </div>
-
-        <div class="controls">
-          <label class="label">
-            Select metadata:
-            <select
-              v-model="selectedMetadataColumn"
-              @change="renderMetadataUMAP"
-              class="select"
-            >
-              <option v-for="col in metadataColumns" :key="col" :value="col">
-                {{ col }}
-              </option>
-            </select>
-          </label>
-        </div>
-
-        <div class="canvas-container">
-          <canvas ref="leftCanvas"></canvas>
-        </div>
-
-        <div v-if="metadataLegend.length > 0" class="legend">
-          <div class="legend-title">Legend</div>
-          <div class="legend-items">
-            <div
-              v-for="(item, idx) in metadataLegend"
-              :key="idx"
-              class="legend-item"
-            >
-              <div
-                class="legend-color"
-                :style="{ background: item.color }"
-              ></div>
-              <span class="legend-label">{{ item.label }}</span>
-            </div>
-          </div>
-        </div>
-        <!-- Tooltip for Left Panel -->
-        <div
-          v-if="hoveredPoint"
-          class="tooltip"
-          :style="{
-            left: leftTooltipPos.x + 'px',
-            top: leftTooltipPos.y + 'px',
-          }"
-        >
-          <div class="tooltip-header">{{ hoveredPoint.cell_id }}</div>
-          <div
-            v-for="(value, key) in getTooltipData(hoveredPoint)"
-            :key="key"
-            class="tooltip-row"
-          >
-            <span class="tooltip-label" :style="getTooltipLabelStyle(key)"
-              >{{ formatLabel(key) }}:</span
-            >
-            <span class="tooltip-value">{{ formatValue(key, value) }}</span>
-          </div>
-        </div>
+      <div class="filter-placeholder">
+        <!-- Filter will go here -->
       </div>
-
-      <!-- Right Panel: Gene Expression UMAP -->
-      <div class="panel">
-        <div class="header">
-          <h3 class="title">Assay RNA (Gene Expression)</h3>
-          <div class="filter-placeholder">
-            <!-- Filter will go here -->
+      <div class="both-pannels">
+        <!-- Left Panel: Metadata UMAP -->
+        <div class="panel">
+          <div class="header">
+            <h3 class="title">Cell Metadata</h3>
           </div>
-        </div>
 
-        <div class="controls">
-          <label class="label">
-            Select gene:
-            <div class="gene-input-wrapper">
-              <input
-                v-model="geneSearch"
-                type="text"
-                placeholder="Enter gene name (e.g., CDH9)"
-                class="gene-input"
-                list="gene-suggestions"
-                @input="debouncedSearchGenes"
-              />
-              <datalist id="gene-suggestions">
-                <option
-                  v-for="gene in geneSuggestions"
-                  :key="gene"
-                  :value="gene"
-                />
-              </datalist>
-              <button
-                @click="handleGeneSelect"
-                :disabled="!geneSearch.trim() || geneLoading"
-                class="visualize-btn"
+          <div class="controls">
+            <label class="label">
+              Select metadata:
+              <select
+                v-model="selectedMetadataColumn"
+                @change="renderMetadataUMAP"
+                class="select"
               >
-                {{ geneLoading ? "Loading..." : "Visualize" }}
+                <option v-for="col in metadataColumns" :key="col" :value="col">
+                  {{ col }}
+                </option>
+              </select>
+            </label>
+          </div>
+
+          <div class="canvas-container">
+            <canvas ref="leftCanvas"></canvas>
+          </div>
+
+          <div
+            v-if="metadataLegend.length > 0"
+            class="legend"
+            :class="{ 'legend-expanded': leftLegendExpanded }"
+          >
+            <div class="legend-header">
+              <div class="legend-title">Legend</div>
+              <button
+                class="legend-toggle"
+                @click.stop="toggleLeftLegend"
+                :title="leftLegendExpanded ? 'Collapse' : 'Expand'"
+              >
+                <span v-if="leftLegendExpanded">▼</span>
+                <span v-else>▲</span>
               </button>
             </div>
-          </label>
-        </div>
-
-        <div class="canvas-container">
-          <div v-if="geneLoading" class="loading-overlay">
-            <div class="small-spinner"></div>
-            <p>Loading gene expression...</p>
+            <div class="legend-items">
+              <div
+                v-for="(item, idx) in metadataLegend"
+                :key="idx"
+                class="legend-item"
+                @click="toggleSubset(item.label)"
+              >
+                <div
+                  class="legend-color"
+                  :class="{
+                    'legend-color-hidden': !subsetCategories.has(item.label),
+                  }"
+                  :style="{
+                    background: item.color,
+                    borderColor: item.color,
+                  }"
+                >
+                  <span
+                    v-if="!subsetCategories.has(item.label)"
+                    class="legend-x"
+                    >✕</span
+                  >
+                </div>
+                <span class="legend-label">{{ item.label }}</span>
+              </div>
+            </div>
           </div>
-          <canvas ref="rightCanvas"></canvas>
+
+          <!-- Tooltip for Left Panel -->
+          <div
+            v-if="hoveredPoint"
+            class="tooltip"
+            :style="{
+              left: leftTooltipPos.x + 'px',
+              top: leftTooltipPos.y + 'px',
+            }"
+          >
+            <div class="tooltip-header">{{ hoveredPoint.cell_id }}</div>
+            <div
+              v-for="(value, key) in getTooltipData(hoveredPoint)"
+              :key="key"
+              class="tooltip-row"
+            >
+              <span class="tooltip-label" :style="getTooltipLabelStyle(key)"
+                >{{ formatLabel(key) }}:</span
+              >
+              <span class="tooltip-value">{{ formatValue(key, value) }}</span>
+            </div>
+          </div>
         </div>
 
-        <div v-if="selectedGene && !geneLoading" class="legend">
-          <div class="legend-title">Expression Level</div>
-          <div class="gradient-bar">
-            <div class="gradient-fill"></div>
-            <div class="gradient-labels">
-              <span>Low</span>
-              <span>High</span>
+        <!-- Right Panel: Gene Expression UMAP -->
+        <div class="panel">
+          <div class="header">
+            <h3 class="title">Assay RNA (Gene Expression)</h3>
+          </div>
+
+          <div class="controls">
+            <label class="label">
+              Select gene:
+              <div class="gene-input-wrapper">
+                <input
+                  v-model="geneSearch"
+                  type="text"
+                  placeholder="Enter gene name (e.g., CDH9)"
+                  class="gene-input"
+                  list="gene-suggestions"
+                  @input="debouncedSearchGenes"
+                />
+                <datalist id="gene-suggestions">
+                  <option
+                    v-for="gene in geneSuggestions"
+                    :key="gene"
+                    :value="gene"
+                  />
+                </datalist>
+                <button
+                  @click="handleGeneSelect"
+                  :disabled="!geneSearch.trim() || geneLoading"
+                  class="visualize-btn"
+                >
+                  {{ geneLoading ? "Loading..." : "Visualize" }}
+                </button>
+              </div>
+            </label>
+          </div>
+
+          <div class="canvas-container">
+            <div v-if="geneLoading" class="loading-overlay">
+              <div class="small-spinner"></div>
+              <p>Loading gene expression...</p>
+            </div>
+            <canvas ref="rightCanvas"></canvas>
+          </div>
+
+          <div v-if="selectedGene && !geneLoading" class="legend">
+            <div class="legend-title">Expression Level</div>
+            <div class="gradient-bar">
+              <div class="gradient-fill"></div>
+              <div class="gradient-labels">
+                <span>Low</span>
+                <span>High</span>
+              </div>
             </div>
           </div>
         </div>
@@ -158,8 +185,11 @@ import { UMAPGeneViewer } from "../GeneExpressionViewer/dataManager";
 // Props
 const props = defineProps({
   dataPath: { type: String, default: "/data" },
+  metadataColumn: { type: String, default: null },
+  gene: { type: String, default: null },
 });
-
+//EMITS
+const emit = defineEmits(["update:Vars"]);
 // Refs
 const leftCanvas = ref(null);
 const rightCanvas = ref(null);
@@ -174,6 +204,8 @@ const rightPointsData = ref([]);
 const hoveredCellId = ref(null); // Shared hover state by cell_id
 const hoveredFromLeft = ref(true); // Track which panel triggered the hover
 const leftTooltipPos = ref({ x: 0, y: 0 });
+const leftLegendExpanded = ref(false);
+const isLegendAnimating = ref(false);
 
 // State
 const loading = ref(true);
@@ -182,18 +214,55 @@ const umapData = ref([]);
 
 // Left panel (metadata)
 const metadataColumns = ref([]);
-const selectedMetadataColumn = ref("");
+const selectedMetadataColumn = ref(props.metadataColumn || "");
 const metadataLegend = ref([]);
+const subsetCategories = ref(new Set());
 
 // Right panel (gene expression)
 const geneSearch = ref("");
-const selectedGene = ref("");
+const selectedGene = ref(props.gene || "");
 const geneSuggestions = ref([]);
 const geneLoading = ref(false);
 
 // Search timeout
 let searchTimeout = null;
 
+//WATCHES FOR REFS
+watch(
+  () => props.metadataColumn,
+  (newVal) => {
+    if (newVal && newVal !== selectedMetadataColumn.value) {
+      selectedMetadataColumn.value = newVal;
+      if (umapData.value.length > 0) {
+        renderMetadataUMAP();
+      }
+    }
+  }
+);
+
+watch(
+  () => props.gene,
+  (newVal) => {
+    if (newVal && newVal !== selectedGene.value) {
+      selectedGene.value = newVal;
+      geneSearch.value = newVal;
+      if (umapData.value.length > 0) {
+        renderGeneUMAP();
+      }
+    }
+  }
+);
+watch(selectedMetadataColumn, (newVal) => {
+  if (newVal) {
+    emit("update:Vars", "selectedMetadataColumn", newVal);
+  }
+});
+
+watch(selectedGene, (newVal) => {
+  if (newVal) {
+    emit("update:Vars", "selectedGene", newVal);
+  }
+});
 // Helper function
 function hexToRgb(hex) {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
@@ -202,6 +271,58 @@ function hexToRgb(hex) {
   return [r, g, b];
 }
 
+function cleanupLeftPanel() {
+  // Clean up textures
+  if (leftLabelTextures.length > 0) {
+    leftLabelTextures.forEach((texture) => {
+      try {
+        texture.destroy();
+      } catch (e) {
+        console.warn("Error destroying texture:", e);
+      }
+    });
+    leftLabelTextures = [];
+  }
+
+  // Remove event listeners
+  if (leftCanvas.value && leftEventListeners.length > 0) {
+    leftEventListeners.forEach(({ event, handler }) => {
+      leftCanvas.value.removeEventListener(event, handler);
+    });
+    leftEventListeners = [];
+  }
+
+  // Clean up regl instance
+  if (leftRegl.value) {
+    try {
+      leftRegl.value.destroy();
+    } catch (e) {
+      console.warn("Error destroying regl:", e);
+    }
+    leftRegl.value = null;
+    leftReglInstance = null;
+  }
+}
+function cleanupRightPanel() {
+  // Remove event listeners
+  if (rightCanvas.value && rightEventListeners.length > 0) {
+    rightEventListeners.forEach(({ event, handler }) => {
+      rightCanvas.value.removeEventListener(event, handler);
+    });
+    rightEventListeners = [];
+  }
+
+  // Clean up regl instance
+  if (rightRegl.value) {
+    try {
+      rightRegl.value.destroy();
+    } catch (e) {
+      console.warn("Error destroying right regl:", e);
+    }
+    rightRegl.value = null;
+    rightReglInstance = null;
+  }
+}
 // Left panel render variables (shared across functions)
 let leftRenderScheduled = false;
 let leftDrawPoints = null;
@@ -209,6 +330,8 @@ let leftXScale = null;
 let leftYScale = null;
 let leftReglInstance = null;
 let leftLabels = [];
+let leftLabelTextures = [];
+let leftEventListeners = [];
 
 // Right panel render variables (shared across functions)
 let rightRenderScheduled = false;
@@ -216,6 +339,7 @@ let rightDrawPoints = null;
 let rightXScale = null;
 let rightYScale = null;
 let rightReglInstance = null;
+let rightEventListeners = [];
 
 //Computed
 const hoveredPoint = computed(() => {
@@ -253,10 +377,15 @@ onMounted(async () => {
       metadataColumns.value = cols;
 
       if (cols.length > 0) {
-        // Default to Atlas_annotations if available
-        selectedMetadataColumn.value = cols.includes("Atlas_annotations")
-          ? "Atlas_annotations"
-          : cols[0];
+        // Use prop if provided, otherwise default logic
+        if (props.metadataColumn && cols.includes(props.metadataColumn)) {
+          selectedMetadataColumn.value = props.metadataColumn;
+        } else if (!selectedMetadataColumn.value) {
+          // Default to Atlas_annotations if available
+          selectedMetadataColumn.value = cols.includes("Atlas_annotation")
+            ? "Atlas_annotation"
+            : cols[0];
+        }
       }
     }
 
@@ -268,6 +397,12 @@ onMounted(async () => {
     if (selectedMetadataColumn.value) {
       renderMetadataUMAP();
     }
+    // Render gene if provided via prop
+    if (props.gene) {
+      selectedGene.value = props.gene;
+      geneSearch.value = props.gene;
+      await renderGeneUMAP();
+    }
   } catch (err) {
     console.error("Failed to initialize:", err);
     error.value = `Failed to load data: ${err.message}`;
@@ -278,24 +413,30 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (leftResizeObserver.value) leftResizeObserver.value.disconnect();
   if (rightResizeObserver.value) rightResizeObserver.value.disconnect();
-  if (leftRegl.value) leftRegl.value.destroy();
-  if (rightRegl.value) rightRegl.value.destroy();
-});
 
+  // Clean up both panels
+  cleanupLeftPanel();
+  cleanupRightPanel();
+});
 // Setup resize observers
 function setupResizeObservers() {
   if (leftCanvas.value) {
     leftResizeObserver.value = new ResizeObserver(() => {
-      if (selectedMetadataColumn.value) renderMetadataUMAP();
+      // Ignore resize events during legend animation
+      if (!isLegendAnimating.value && selectedMetadataColumn.value) {
+        renderMetadataUMAP();
+      }
     });
-    leftResizeObserver.value.observe(leftCanvas.value.parentElement);
+    // Observe the panel instead of the canvas container
+    leftResizeObserver.value.observe(leftCanvas.value.closest(".panel"));
   }
 
   if (rightCanvas.value) {
     rightResizeObserver.value = new ResizeObserver(() => {
       if (selectedGene.value) renderGeneUMAP();
     });
-    rightResizeObserver.value.observe(rightCanvas.value.parentElement);
+    // Observe the panel instead of the canvas container
+    rightResizeObserver.value.observe(rightCanvas.value.closest(".panel"));
   }
 }
 
@@ -379,26 +520,214 @@ function calculateLabelPositions(points, column, colorScale) {
       }
     }
   }
-
   return labels;
 }
+//subset
+function initializeVisibleSubsets(values, targetSet) {
+  targetSet.value = new Set(values);
+}
 
-// Draw labels on the left canvas
+// Add function to toggle category visibility
+function toggleSubset(category) {
+  const visibleSet = subsetCategories;
+
+  if (visibleSet.value.has(category)) {
+    visibleSet.value.delete(category);
+  } else {
+    visibleSet.value.add(category);
+  }
+
+  // Rebuild both panels
+  rebuildLeftPoints();
+  if (rightReglInstance && selectedGene.value) {
+    rebuildRightPoints();
+  }
+}
+function toggleLeftLegend() {
+  isLegendAnimating.value = true;
+  leftLegendExpanded.value = !leftLegendExpanded.value;
+
+  // Wait for animation to complete (300ms from your CSS transition)
+  setTimeout(() => {
+    isLegendAnimating.value = false;
+  }, 350);
+}
+
+function rebuildLeftPoints() {
+  if (!leftReglInstance || !leftXScale || !leftYScale) return;
+
+  const canvas = leftCanvas.value;
+  if (!canvas) return;
+
+  // Build points for ALL categories, but use grey for hidden ones
+  const positions = [];
+  const colors = [];
+  leftPointsData.value.forEach((p) => {
+    const categoryValue = String(p[selectedMetadataColumn.value]);
+    positions.push(leftXScale(p.x), leftYScale(p.y));
+
+    // Use grey color for hidden categories, original color for visible ones
+    if (subsetCategories.value.has(categoryValue)) {
+      const rgb = d3.color(p.color).rgb();
+      colors.push(rgb.r / 255, rgb.g / 255, rgb.b / 255, 0.8);
+    } else {
+      // Grey color for hidden categories
+      colors.push(0.85, 0.85, 0.85, 0.3); // Light grey with low opacity
+    }
+  });
+
+  // Recreate the draw command with all data
+  leftDrawPoints = leftReglInstance({
+    frag: `
+      precision mediump float;
+      varying vec4 vColor;
+      void main() {
+        vec2 c = gl_PointCoord - vec2(0.5);
+        float d = length(c);
+        if (d > 0.5) discard;
+        float alpha = vColor.a * (1.0 - smoothstep(0.3, 0.5, d));
+        gl_FragColor = vec4(vColor.rgb, alpha);
+      }`,
+    vert: `
+      precision mediump float;
+      attribute vec2 position;
+      attribute vec4 color;
+      varying vec4 vColor;
+      uniform float pointSize;
+      uniform float scale;
+      uniform vec2 translate;
+      void main() {
+        vec2 pos = position * scale + translate;
+        gl_Position = vec4(pos, 0, 1);
+        gl_PointSize = pointSize;
+        vColor = color;
+      }`,
+    attributes: { position: positions, color: colors },
+    uniforms: {
+      pointSize: leftReglInstance.prop("pointSize"),
+      scale: leftReglInstance.prop("scale"),
+      translate: leftReglInstance.prop("translate"),
+    },
+    count: positions.length / 2,
+    primitive: "points",
+    depth: { enable: false },
+    blend: {
+      enable: true,
+      func: {
+        srcRGB: "src alpha",
+        srcAlpha: "src alpha",
+        dstRGB: "one minus src alpha",
+        dstAlpha: "one minus src alpha",
+      },
+      equation: "add",
+    },
+  });
+
+  // Trigger re-render
+  renderLeftPanel();
+}
+function rebuildRightPoints() {
+  if (!rightReglInstance || !rightXScale || !rightYScale) return;
+
+  const canvas = rightCanvas.value;
+  if (!canvas) return;
+
+  // Build points for ALL categories, but use grey for hidden ones
+  const positions = [];
+  const colors = [];
+  rightPointsData.value.forEach((p) => {
+    const categoryValue = String(p[selectedMetadataColumn.value]);
+    positions.push(rightXScale(p.x), rightYScale(p.y));
+
+    // Use grey color for hidden categories, original color for visible ones
+    if (subsetCategories.value.has(categoryValue)) {
+      const rgb = d3.color(p.color).rgb();
+      colors.push(rgb.r / 255, rgb.g / 255, rgb.b / 255, 0.8);
+    } else {
+      // Grey color for hidden categories
+      colors.push(0.85, 0.85, 0.85, 0.3); // Light grey with low opacity
+    }
+  });
+
+  // Recreate the draw command with all data
+  rightDrawPoints = rightReglInstance({
+    frag: `
+      precision mediump float;
+      varying vec4 vColor;
+      void main() {
+        vec2 c = gl_PointCoord - vec2(0.5);
+        float d = length(c);
+        if (d > 0.5) discard;
+        float alpha = vColor.a * (1.0 - smoothstep(0.3, 0.5, d));
+        gl_FragColor = vec4(vColor.rgb, alpha);
+      }`,
+    vert: `
+      precision mediump float;
+      attribute vec2 position;
+      attribute vec4 color;
+      varying vec4 vColor;
+      uniform float pointSize;
+      uniform float scale;
+      uniform vec2 translate;
+      void main() {
+        vec2 pos = position * scale + translate;
+        gl_Position = vec4(pos, 0, 1);
+        gl_PointSize = pointSize;
+        vColor = color;
+      }`,
+    attributes: { position: positions, color: colors },
+    uniforms: {
+      pointSize: rightReglInstance.prop("pointSize"),
+      scale: rightReglInstance.prop("scale"),
+      translate: rightReglInstance.prop("translate"),
+    },
+    count: positions.length / 2,
+    primitive: "points",
+    depth: { enable: false },
+    blend: {
+      enable: true,
+      func: {
+        srcRGB: "src alpha",
+        srcAlpha: "src alpha",
+        dstRGB: "one minus src alpha",
+        dstAlpha: "one minus src alpha",
+      },
+      equation: "add",
+    },
+  });
+
+  // Trigger re-render
+  renderRightPanel();
+}
+// Draw labels on the left canvas using WebGL
 function drawLeftLabels(canvas, transform) {
-  if (!canvas || !leftXScale || !leftYScale || leftLabels.length === 0) return;
-
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
+  if (
+    !canvas ||
+    !leftReglInstance ||
+    !leftXScale ||
+    !leftYScale ||
+    leftLabels.length === 0
+  )
+    return;
 
   const tr = transform || d3.zoomIdentity;
 
-  ctx.save();
+  // Clean up old textures first
+  leftLabelTextures.forEach((texture) => {
+    try {
+      texture.destroy();
+    } catch (e) {}
+  });
+  leftLabelTextures = [];
 
   leftLabels.forEach((label) => {
+    if (!subsetCategories.value.has(label.text)) {
+      return;
+    }
     const px = leftXScale(label.x);
     const py = leftYScale(label.y);
 
-    // Transform to screen coordinates
+    // Transform to screen coordinates for visibility check
     const tX = (2 * tr.x) / canvas.width;
     const tY = -(2 * tr.y) / canvas.height;
     const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
@@ -414,43 +743,119 @@ function drawLeftLabels(canvas, transform) {
       return;
     }
 
-    // Set font size based on zoom level
-    const fontSize = Math.max(10, Math.min(16, 12 * Math.sqrt(tr.k)));
-    ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
+    // Calculate font size based on zoom, with limits
+    const baseFontSize = 12;
+    const minFontSize = 11;
+    const maxFontSize = 18;
+    // Direct scaling with zoom (no sqrt dampening)
+    const fontSize = Math.round(
+      Math.max(minFontSize, Math.min(maxFontSize, baseFontSize * tr.k))
+    );
+    const tempCanvas = document.createElement("canvas");
+    const tempCtx = tempCanvas.getContext("2d", { willReadFrequently: true });
 
-    // Measure text for background
-    const metrics = ctx.measureText(label.text);
+    tempCtx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    const metrics = tempCtx.measureText(label.text);
     const textWidth = metrics.width;
     const textHeight = fontSize;
     const padding = 4;
 
-    // Draw background
-    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-    ctx.fillRect(
-      screenX - textWidth / 2 - padding,
-      screenY - textHeight / 2 - padding,
-      textWidth + padding * 2,
-      textHeight + padding * 2
-    );
+    // Size the temp canvas
+    tempCanvas.width = textWidth + padding * 2;
+    tempCanvas.height = textHeight + padding * 2;
 
-    // Draw border with category color
-    ctx.strokeStyle = label.color;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(
-      screenX - textWidth / 2 - padding,
-      screenY - textHeight / 2 - padding,
-      textWidth + padding * 2,
-      textHeight + padding * 2
-    );
+    // Redraw (canvas was cleared by resize)
+    tempCtx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    tempCtx.textAlign = "center";
+    tempCtx.textBaseline = "middle";
+
+    // Draw background
+    tempCtx.fillStyle = "rgba(255, 255, 255, 0.85)";
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+    // Draw border
+    tempCtx.strokeStyle = label.color;
+    tempCtx.lineWidth = 2;
+    tempCtx.strokeRect(0, 0, tempCanvas.width, tempCanvas.height);
 
     // Draw text
-    ctx.fillStyle = label.color;
-    ctx.fillText(label.text, screenX, screenY);
-  });
+    tempCtx.fillStyle = label.color;
+    tempCtx.fillText(label.text, tempCanvas.width / 2, tempCanvas.height / 2);
 
-  ctx.restore();
+    // Create texture from canvas
+    const texture = leftReglInstance.texture({
+      data: tempCanvas,
+      mag: "linear",
+      min: "linear",
+    });
+
+    leftLabelTextures.push(texture); // Track for cleanup
+
+    // Calculate quad size in NDC space - no additional scaling needed
+    const quadWidth = (tempCanvas.width / canvas.width) * 2;
+    const quadHeight = (tempCanvas.height / canvas.height) * 2;
+
+    // Draw textured quad at 1:1 pixel ratio (no texture scaling)
+    const drawQuad = leftReglInstance({
+      frag: `
+        precision mediump float;
+        varying vec2 vUv;
+        uniform sampler2D texture;
+        void main() {
+          gl_FragColor = texture2D(texture, vUv);
+        }`,
+      vert: `
+        precision mediump float;
+        attribute vec2 position;
+        attribute vec2 uv;
+        varying vec2 vUv;
+        uniform vec2 offset;
+        uniform vec2 size;
+        uniform vec2 translate;
+        void main() {
+          vec2 pos = offset + position * size + translate;
+          gl_Position = vec4(pos, 0, 1);
+          vUv = uv;
+        }`,
+      attributes: {
+        position: [
+          [-0.5, -0.5],
+          [0.5, -0.5],
+          [-0.5, 0.5],
+          [0.5, 0.5],
+        ],
+        uv: [
+          [0, 1],
+          [1, 1],
+          [0, 0],
+          [1, 0],
+        ],
+      },
+      uniforms: {
+        texture: texture,
+        offset: [
+          px * tr.k + (2 * tr.x) / canvas.width,
+          py * tr.k - (2 * tr.y) / canvas.height,
+        ],
+        size: [quadWidth, quadHeight],
+        translate: [0, 0],
+      },
+      primitive: "triangle strip",
+      count: 4,
+      depth: { enable: false },
+      blend: {
+        enable: true,
+        func: {
+          srcRGB: "src alpha",
+          srcAlpha: 1,
+          dstRGB: "one minus src alpha",
+          dstAlpha: 1,
+        },
+      },
+    });
+
+    drawQuad();
+  });
 }
 
 // Render metadata UMAP
@@ -458,6 +863,9 @@ async function renderMetadataUMAP() {
   await nextTick();
   const canvas = leftCanvas.value;
   if (!canvas || !umapData.value.length) return;
+
+  // Clean up previous instance before creating new one
+  cleanupLeftPanel();
 
   const container = canvas.parentElement;
   const rect = container.getBoundingClientRect();
@@ -483,6 +891,15 @@ async function renderMetadataUMAP() {
     color: colorScale(v),
   }));
 
+  // Always initialize all categories as visible when rendering/changing metadata
+  initializeVisibleSubsets(
+    values.map((v) => String(v)),
+    subsetCategories
+  );
+  console.log(
+    "subsetCategories initialized with:",
+    Array.from(subsetCategories.value)
+  );
   // Prepare points
   const points = umapData.value.map((d) => ({
     ...d,
@@ -504,9 +921,6 @@ async function renderMetadataUMAP() {
   leftLabels = labelPositions;
 
   try {
-    if (leftRegl.value) {
-      leftRegl.value.destroy();
-    }
     leftRegl.value = createRegl(canvas);
   } catch (err) {
     console.error("WebGL not supported:", err);
@@ -534,9 +948,15 @@ async function renderMetadataUMAP() {
   const positions = [];
   const colors = [];
   points.forEach((p) => {
+    const categoryValue = String(p[selectedMetadataColumn.value]);
     positions.push(xScale(p.x), yScale(p.y));
-    const rgb = d3.color(p.color).rgb();
-    colors.push(rgb.r / 255, rgb.g / 255, rgb.b / 255, 0.8);
+
+    if (subsetCategories.value.has(categoryValue)) {
+      const rgb = d3.color(p.color).rgb();
+      colors.push(rgb.r / 255, rgb.g / 255, rgb.b / 255, 0.8);
+    } else {
+      colors.push(0.85, 0.85, 0.85, 0.3);
+    }
   });
 
   const drawPoints = regl({
@@ -570,7 +990,7 @@ async function renderMetadataUMAP() {
       scale: regl.prop("scale"),
       translate: regl.prop("translate"),
     },
-    count: points.length,
+    count: positions.length / 2,
     primitive: "points",
     depth: { enable: false },
     blend: {
@@ -604,48 +1024,53 @@ async function renderMetadataUMAP() {
 
   d3.select(canvas).call(zoom);
 
-  canvas.addEventListener(
-    "wheel",
-    (event) => {
-      event.preventDefault();
-      const r = canvas.getBoundingClientRect();
-      const mx = event.clientX - r.left;
-      const my = event.clientY - r.top;
-      const tr = sharedZoom.value || d3.zoomIdentity;
+  // Track event listeners for cleanup
+  let lastMouseMoveTime = 0;
+  const MOUSE_MOVE_THROTTLE = 16; // ~60fps
 
-      const ndcX = (mx / canvas.width) * 2 - 1;
-      const ndcY = -((my / canvas.height) * 2 - 1);
+  const wheelHandler = (event) => {
+    event.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    const mx = event.clientX - r.left;
+    const my = event.clientY - r.top;
+    const tr = sharedZoom.value || d3.zoomIdentity;
 
-      const tX = (2 * tr.x) / canvas.width;
-      const tY = -(2 * tr.y) / canvas.height;
+    const ndcX = (mx / canvas.width) * 2 - 1;
+    const ndcY = -((my / canvas.height) * 2 - 1);
 
-      const dataX = (ndcX - tX) / tr.k;
-      const dataY = (ndcY - tY) / tr.k;
+    const tX = (2 * tr.x) / canvas.width;
+    const tY = -(2 * tr.y) / canvas.height;
 
-      const delta = -event.deltaY * 0.002;
-      const kNew = Math.max(0.5, Math.min(10, tr.k * Math.pow(2, delta)));
+    const dataX = (ndcX - tX) / tr.k;
+    const dataY = (ndcY - tY) / tr.k;
 
-      const newTranslateX = ndcX - dataX * kNew;
-      const newTranslateY = ndcY - dataY * kNew;
+    const delta = -event.deltaY * 0.002;
+    const kNew = Math.max(0.5, Math.min(10, tr.k * Math.pow(2, delta)));
 
-      const xNew = (newTranslateX * canvas.width) / 2;
-      const yNew = -(newTranslateY * canvas.height) / 2;
+    const newTranslateX = ndcX - dataX * kNew;
+    const newTranslateY = ndcY - dataY * kNew;
 
-      const newTransform = d3.zoomIdentity.translate(xNew, yNew).scale(kNew);
-      sharedZoom.value = newTransform;
-      renderLeftPanel();
-      d3.select(canvas).property("__zoom", newTransform);
+    const xNew = (newTranslateX * canvas.width) / 2;
+    const yNew = -(newTranslateY * canvas.height) / 2;
 
-      // Also update right panel
-      if (rightCanvas.value && rightRegl.value && selectedGene.value) {
-        d3.select(rightCanvas.value).property("__zoom", newTransform);
-        renderRightPanel();
-      }
-    },
-    { passive: false }
-  );
+    const newTransform = d3.zoomIdentity.translate(xNew, yNew).scale(kNew);
+    sharedZoom.value = newTransform;
+    renderLeftPanel();
+    d3.select(canvas).property("__zoom", newTransform);
 
-  canvas.addEventListener("mousemove", (event) => {
+    // Also update right panel
+    if (rightCanvas.value && rightRegl.value && selectedGene.value) {
+      d3.select(rightCanvas.value).property("__zoom", newTransform);
+      renderRightPanel();
+    }
+  };
+
+  const mouseMoveHandler = (event) => {
+    // Throttle mouse move events
+    const now = Date.now();
+    if (now - lastMouseMoveTime < MOUSE_MOVE_THROTTLE) return;
+    lastMouseMoveTime = now;
+
     const r = canvas.getBoundingClientRect();
     const mx = event.clientX - r.left;
     const my = event.clientY - r.top;
@@ -705,15 +1130,27 @@ async function renderMetadataUMAP() {
     if (rightRegl.value && selectedGene.value) {
       renderRightPanel();
     }
-  });
+  };
 
-  canvas.addEventListener("mouseleave", () => {
+  const mouseLeaveHandler = () => {
     hoveredCellId.value = null;
     renderLeftPanel();
     if (rightRegl.value && selectedGene.value) {
       renderRightPanel();
     }
-  });
+  };
+
+  // Add event listeners
+  canvas.addEventListener("wheel", wheelHandler, { passive: false });
+  canvas.addEventListener("mousemove", mouseMoveHandler);
+  canvas.addEventListener("mouseleave", mouseLeaveHandler);
+
+  // Track for cleanup
+  leftEventListeners = [
+    { event: "wheel", handler: wheelHandler },
+    { event: "mousemove", handler: mouseMoveHandler },
+    { event: "mouseleave", handler: mouseLeaveHandler },
+  ];
 
   renderLeftPanel();
 }
@@ -743,19 +1180,24 @@ function renderRightPanel() {
         (p) => p.cell_id === hoveredCellId.value
       );
       if (idx !== -1) {
-        drawRightHighlightedPoint(idx, sharedZoom.value);
+        const point = rightPointsData.value[idx];
+        // Only draw highlight if the category is visible
+        const categoryValue = String(point[selectedMetadataColumn.value]);
+        if (subsetCategories.value.has(categoryValue)) {
+          drawRightHighlightedPoint(idx, sharedZoom.value);
 
-        // Update tooltip position
-        const p = rightPointsData.value[idx];
-        const px = rightXScale(p.x);
-        const py = rightYScale(p.y);
-        const tr = sharedZoom.value;
-        const tX = (2 * tr.x) / canvas.width;
-        const tY = -(2 * tr.y) / canvas.height;
-        const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
-        const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
+          // Update tooltip position
+          const p = rightPointsData.value[idx];
+          const px = rightXScale(p.x);
+          const py = rightYScale(p.y);
+          const tr = sharedZoom.value;
+          const tX = (2 * tr.x) / canvas.width;
+          const tY = -(2 * tr.y) / canvas.height;
+          const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
+          const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
 
-        const canvasRect = canvas.getBoundingClientRect();
+          const canvasRect = canvas.getBoundingClientRect();
+        }
       }
     }
 
@@ -860,7 +1302,7 @@ function renderLeftPanel() {
 
     leftDrawPoints({ scale, translate, pointSize });
 
-    // Draw labels
+    // Draw labels only for visible categories
     drawLeftLabels(canvas, sharedZoom.value);
 
     // Draw highlight if there's a hovered cell
@@ -869,23 +1311,28 @@ function renderLeftPanel() {
         (p) => p.cell_id === hoveredCellId.value
       );
       if (idx !== -1) {
-        drawLeftHighlightedPoint(idx, sharedZoom.value);
+        const point = leftPointsData.value[idx];
+        // Only draw highlight if the category is visible
+        const categoryValue = String(point[selectedMetadataColumn.value]);
+        if (subsetCategories.value.has(categoryValue)) {
+          drawLeftHighlightedPoint(idx, sharedZoom.value);
 
-        // Update tooltip position
-        const p = leftPointsData.value[idx];
-        const px = leftXScale(p.x);
-        const py = leftYScale(p.y);
-        const tr = sharedZoom.value;
-        const tX = (2 * tr.x) / canvas.width;
-        const tY = -(2 * tr.y) / canvas.height;
-        const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
-        const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
+          // Update tooltip position
+          const p = leftPointsData.value[idx];
+          const px = leftXScale(p.x);
+          const py = leftYScale(p.y);
+          const tr = sharedZoom.value;
+          const tX = (2 * tr.x) / canvas.width;
+          const tY = -(2 * tr.y) / canvas.height;
+          const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
+          const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
 
-        const canvasRect = canvas.getBoundingClientRect();
-        leftTooltipPos.value = {
-          x: canvasRect.left + screenX + 15,
-          y: canvasRect.top + screenY - 10,
-        };
+          const canvasRect = canvas.getBoundingClientRect();
+          leftTooltipPos.value = {
+            x: canvasRect.left + screenX + 15,
+            y: canvasRect.top + screenY - 10,
+          };
+        }
       }
     }
 
@@ -974,9 +1421,16 @@ function drawLeftHighlightedPoint(idx, tr) {
 async function renderGeneUMAP() {
   if (!selectedGene.value) return;
 
+  console.log("=== renderGeneUMAP START ===");
+  console.log("selectedMetadataColumn:", selectedMetadataColumn.value);
+  console.log("subsetCategories size:", subsetCategories.value.size);
+  console.log("subsetCategories contents:", Array.from(subsetCategories.value));
+
   await nextTick();
   const canvas = rightCanvas.value;
   if (!canvas || !umapData.value.length) return;
+
+  cleanupRightPanel();
 
   const container = canvas.parentElement;
   const rect = container.getBoundingClientRect();
@@ -985,6 +1439,21 @@ async function renderGeneUMAP() {
 
   canvas.width = width;
   canvas.height = height;
+
+  // Initialize subsetCategories if empty
+  if (subsetCategories.value.size === 0 && selectedMetadataColumn.value) {
+    const values = [
+      ...new Set(
+        umapData.value
+          .map((d) => d[selectedMetadataColumn.value])
+          .filter((v) => v != null)
+      ),
+    ];
+    initializeVisibleSubsets(
+      values.map((v) => String(v)),
+      subsetCategories
+    );
+  }
 
   try {
     geneLoading.value = true;
@@ -1011,6 +1480,7 @@ async function renderGeneUMAP() {
         expr,
         norm,
         color: `rgb(${r}, ${g}, ${b})`,
+        originalColor: `rgb(${r}, ${g}, ${b})`, // Store original color
         opacity: 0.8,
       };
     });
@@ -1052,10 +1522,25 @@ async function renderGeneUMAP() {
 
     const positions = [];
     const colors = [];
+    console.log("=== About to assign colors ===");
+    console.log("Total points:", points.length);
+    console.log("subsetCategories:", Array.from(subsetCategories.value));
+    console.log(
+      "Sample point metadata:",
+      points[0][selectedMetadataColumn.value]
+    );
     points.forEach((p) => {
+      const categoryValue = String(p[selectedMetadataColumn.value]);
       positions.push(xScale(p.x), yScale(p.y));
-      const rgb = d3.color(p.color).rgb();
-      colors.push(rgb.r / 255, rgb.g / 255, rgb.b / 255, 0.8);
+
+      // Use grey color for hidden categories, original color for visible ones
+      if (subsetCategories.value.has(categoryValue)) {
+        const rgb = d3.color(p.color).rgb();
+        colors.push(rgb.r / 255, rgb.g / 255, rgb.b / 255, 0.8);
+      } else {
+        // Grey color for hidden categories
+        colors.push(0.85, 0.85, 0.85, 0.3);
+      }
     });
 
     const drawPoints = regl({
@@ -1089,7 +1574,7 @@ async function renderGeneUMAP() {
         scale: regl.prop("scale"),
         translate: regl.prop("translate"),
       },
-      count: points.length,
+      count: positions.length / 2,
       primitive: "points",
       depth: { enable: false },
       blend: {
@@ -1124,53 +1609,55 @@ async function renderGeneUMAP() {
       });
 
     d3.select(canvas).call(zoom);
+    // After d3.select(canvas).call(zoom);
 
-    canvas.addEventListener(
-      "wheel",
-      (event) => {
-        event.preventDefault();
-        const r = canvas.getBoundingClientRect();
-        const mx = event.clientX - r.left;
-        const my = event.clientY - r.top;
-        const tr = sharedZoom.value || d3.zoomIdentity;
+    // Track event listeners for cleanup
+    let lastMouseMoveTime = 0;
+    const MOUSE_MOVE_THROTTLE = 16; // ~60fps
 
-        const ndcX = (mx / canvas.width) * 2 - 1;
-        const ndcY = -((my / canvas.height) * 2 - 1);
+    const wheelHandler = (event) => {
+      event.preventDefault();
+      const r = canvas.getBoundingClientRect();
+      const mx = event.clientX - r.left;
+      const my = event.clientY - r.top;
+      const tr = sharedZoom.value || d3.zoomIdentity;
 
-        const tX = (2 * tr.x) / canvas.width;
-        const tY = -(2 * tr.y) / canvas.height;
+      const ndcX = (mx / canvas.width) * 2 - 1;
+      const ndcY = -((my / canvas.height) * 2 - 1);
 
-        const dataX = (ndcX - tX) / tr.k;
-        const dataY = (ndcY - tY) / tr.k;
+      const tX = (2 * tr.x) / canvas.width;
+      const tY = -(2 * tr.y) / canvas.height;
 
-        const delta = -event.deltaY * 0.002;
-        const kNew = Math.max(0.5, Math.min(10, tr.k * Math.pow(2, delta)));
+      const dataX = (ndcX - tX) / tr.k;
+      const dataY = (ndcY - tY) / tr.k;
 
-        const newTranslateX = ndcX - dataX * kNew;
-        const newTranslateY = ndcY - dataY * kNew;
+      const delta = -event.deltaY * 0.002;
+      const kNew = Math.max(0.5, Math.min(10, tr.k * Math.pow(2, delta)));
 
-        const xNew = (newTranslateX * canvas.width) / 2;
-        const yNew = -(newTranslateY * canvas.height) / 2;
+      const newTranslateX = ndcX - dataX * kNew;
+      const newTranslateY = ndcY - dataY * kNew;
 
-        const newTransform = d3.zoomIdentity.translate(xNew, yNew).scale(kNew);
-        sharedZoom.value = newTransform;
-        renderRightPanel();
-        d3.select(canvas).property("__zoom", newTransform);
+      const xNew = (newTranslateX * canvas.width) / 2;
+      const yNew = -(newTranslateY * canvas.height) / 2;
 
-        // Also update left panel
-        if (
-          leftCanvas.value &&
-          leftRegl.value &&
-          selectedMetadataColumn.value
-        ) {
-          d3.select(leftCanvas.value).property("__zoom", newTransform);
-          renderLeftPanel();
-        }
-      },
-      { passive: false }
-    );
+      const newTransform = d3.zoomIdentity.translate(xNew, yNew).scale(kNew);
+      sharedZoom.value = newTransform;
+      renderRightPanel();
+      d3.select(canvas).property("__zoom", newTransform);
 
-    canvas.addEventListener("mousemove", (event) => {
+      // Also update left panel
+      if (leftCanvas.value && leftRegl.value && selectedMetadataColumn.value) {
+        d3.select(leftCanvas.value).property("__zoom", newTransform);
+        renderLeftPanel();
+      }
+    };
+
+    const mouseMoveHandler = (event) => {
+      // Throttle mouse move events
+      const now = Date.now();
+      if (now - lastMouseMoveTime < MOUSE_MOVE_THROTTLE) return;
+      lastMouseMoveTime = now;
+
       const r = canvas.getBoundingClientRect();
       const mx = event.clientX - r.left;
       const my = event.clientY - r.top;
@@ -1217,6 +1704,7 @@ async function renderGeneUMAP() {
         const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
 
         const canvasRect = canvas.getBoundingClientRect();
+        // You can set right tooltip position here if needed
       } else {
         hoveredCellId.value = null;
       }
@@ -1226,15 +1714,27 @@ async function renderGeneUMAP() {
       if (leftRegl.value && selectedMetadataColumn.value) {
         renderLeftPanel();
       }
-    });
+    };
 
-    canvas.addEventListener("mouseleave", () => {
+    const mouseLeaveHandler = () => {
       hoveredCellId.value = null;
       renderRightPanel();
       if (leftRegl.value && selectedMetadataColumn.value) {
         renderLeftPanel();
       }
-    });
+    };
+
+    // Add event listeners
+    canvas.addEventListener("wheel", wheelHandler, { passive: false });
+    canvas.addEventListener("mousemove", mouseMoveHandler);
+    canvas.addEventListener("mouseleave", mouseLeaveHandler);
+
+    // Track for cleanup
+    rightEventListeners = [
+      { event: "wheel", handler: wheelHandler },
+      { event: "mousemove", handler: mouseMoveHandler },
+      { event: "mouseleave", handler: mouseLeaveHandler },
+    ];
 
     renderRightPanel();
   } catch (err) {
@@ -1296,31 +1796,36 @@ function formatValue(key, value) {
 
 <style scoped>
 .umap-comparison-dashboard {
-  height: 100vh;
-  overflow: hidden;
+  height: 100%;
 }
-
-.dashboard {
+.both-pannels {
   display: flex;
+  flex-direction: row;
   gap: 24px;
-  padding: 24px;
   height: 100%;
   width: 100%;
   background: #f8fafc;
+}
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
 }
 
 .panel {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 2px;
   padding: 24px;
   min-height: 0;
   width: 50%;
-  height: 100%;
+  height: auto;
+  position: relative;
 }
 
 .header {
@@ -1329,6 +1834,8 @@ function formatValue(key, value) {
   gap: 12px;
   padding-bottom: 16px;
   border-bottom: 1px solid #e2e8f0;
+  height: 20px;
+  flex-shrink: 0;
 }
 
 .title {
@@ -1339,26 +1846,23 @@ function formatValue(key, value) {
 }
 
 .filter-placeholder {
-  height: 40px;
-  background: linear-gradient(
-    135deg,
-    rgba(102, 126, 234, 0.05) 0%,
-    rgba(118, 75, 162, 0.05) 100%
-  );
-  border: 1px dashed #cbd5e1;
-  border-radius: 2px;
+  height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #94a3b8;
   font-size: 13px;
   font-style: italic;
+  width: 100%;
 }
 
 .controls {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  height: 72px;
+  flex-shrink: 0;
+  margin-top: 16px;
 }
 
 .label {
@@ -1453,6 +1957,8 @@ function formatValue(key, value) {
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-top: 16px;
+  height: 89%;
 }
 
 .canvas-container canvas {
@@ -1471,21 +1977,63 @@ function formatValue(key, value) {
   border: 1px solid #e2e8f0;
   border-radius: 2px;
   padding: 16px;
+  height: 10%;
+  min-height: 80px;
+  flex-shrink: 0;
+  margin-top: 16px;
+  overflow-y: auto;
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 5;
+}
+
+.legend-expanded {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  right: 24px;
+  height: 60%;
+  max-height: calc(100% - 200px);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+}
+
+.legend-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
 }
 
 .legend-title {
   font-size: 13px;
   font-weight: 600;
   color: #1a202c;
-  margin-bottom: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  margin: 0;
 }
 
-.legend-items {
+.legend-toggle {
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: #64748b;
+  font-size: 12px;
+  transition: all 0.2s;
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 24px;
+}
+
+.legend-toggle:hover {
+  background: #f8fafc;
+  border-color: #667eea;
+  color: #667eea;
 }
 
 .legend-item {
@@ -1494,18 +2042,49 @@ function formatValue(key, value) {
   gap: 8px;
   font-size: 13px;
   color: #64748b;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+.legend-items {
+  display: flex;
+  flex-wrap: wrap;
+}
+.legend-item:hover {
+  background: #f8fafc;
 }
 
 .legend-color {
   width: 20px;
   height: 20px;
   border-radius: 2px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 2px solid;
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.legend-color-hidden {
+  background: white !important;
+  opacity: 0.6;
+}
+
+.legend-x {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 1;
 }
 
 .legend-label {
   font-weight: 500;
 }
+
 .tooltip {
   position: fixed;
   background: white;
@@ -1522,6 +2101,7 @@ function formatValue(key, value) {
   background: rgba(255, 255, 255, 0.98);
   line-height: 1.2;
 }
+
 .tooltip-header {
   font-weight: 700;
   font-size: 14px;
@@ -1530,6 +2110,7 @@ function formatValue(key, value) {
   padding-bottom: 6px;
   border-bottom: 1px solid #e2e8f0;
 }
+
 .tooltip-row {
   display: flex;
   justify-content: space-between;
@@ -1537,11 +2118,13 @@ function formatValue(key, value) {
   padding: 2px 0;
   gap: 8px;
 }
+
 .tooltip-label {
   font-weight: 600;
   color: #64748b;
   margin: 0;
 }
+
 .tooltip-value {
   font-weight: 500;
   color: #1a202c;

@@ -374,12 +374,17 @@ import {
 } from "vue";
 import * as d3 from "d3";
 import createRegl from "regl";
-import { UMAPGeneViewer } from "./dataManager"; // keep your import path
+import { UMAPGeneViewer } from "./dataManager";
 
 // Props
 const props = defineProps({
   dataPath: { type: String, default: "/data" },
+  gene1: { type: [String, null], default: null },
+  gene2: { type: [String, null], default: null },
 });
+
+// Emits
+const emit = defineEmits(["update:Vars"]);
 
 // Refs
 const chartCanvas = ref(null);
@@ -401,11 +406,11 @@ const selectedReduction = ref("umap");
 const hasTsne = ref(false);
 const gradientExpanded = ref(false);
 
-// Gene selection
-const gene1Search = ref("");
-const gene2Search = ref("");
-const gene1 = ref("");
-const gene2 = ref("");
+// Gene selection - internal state
+const gene1Search = ref(props.gene1 || "");
+const gene2Search = ref(props.gene2 || "");
+const gene1 = ref(props.gene1 || "");
+const gene2 = ref(props.gene2 || "");
 const gene1Suggestions = ref([]);
 const gene2Suggestions = ref([]);
 
@@ -432,6 +437,48 @@ const stats = ref({
   gene2Pct: 0,
   coexpressing: 0,
   coexpressPct: 0,
+});
+
+// Watch props and update internal state
+watch(
+  () => props.gene1,
+  (newVal) => {
+    const value = newVal || "";
+    if (value !== gene1.value && value !== gene1Search.value) {
+      gene1Search.value = value;
+      gene1.value = value;
+      if (value && gene2.value && reductionData.value.length > 0) {
+        visualize();
+      }
+    }
+  }
+);
+
+watch(
+  () => props.gene2,
+  (newVal) => {
+    const value = newVal || "";
+    if (value !== gene2.value && value !== gene2Search.value) {
+      gene2Search.value = value;
+      gene2.value = value;
+      if (value && gene1.value && reductionData.value.length > 0) {
+        visualize();
+      }
+    }
+  }
+);
+
+// Watch internal state and emit changes
+watch(gene1, (newVal) => {
+  if (newVal && newVal !== props.gene1) {
+    emit("update:Vars", "selectedGene1", newVal);
+  }
+});
+
+watch(gene2, (newVal) => {
+  if (newVal && newVal !== props.gene2) {
+    emit("update:Vars", "selectedGene2", newVal);
+  }
 });
 
 // Computed
@@ -464,6 +511,15 @@ onMounted(async () => {
 
     // Responsive sizing (no fixed size)
     setupResizeObserver();
+
+    // If both genes provided via props, visualize automatically
+    if (props.gene1 && props.gene2) {
+      gene1.value = props.gene1;
+      gene2.value = props.gene2;
+      gene1Search.value = props.gene1;
+      gene2Search.value = props.gene2;
+      await visualize();
+    }
   } catch (err) {
     console.error("Failed to initialize:", err);
     error.value = `Failed to load data: ${err.message}. Please check that your data files are in the correct location.`;
