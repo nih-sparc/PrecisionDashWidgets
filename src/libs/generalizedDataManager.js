@@ -8,7 +8,6 @@ export class GeneralDataManager {
     this.catalog = null; // Store folder catalog
   }
 
-  // Initialize DuckDB
   async initialize() {
     if (this.initialized) return;
 
@@ -28,6 +27,10 @@ export class GeneralDataManager {
       this.db = new duckdb.AsyncDuckDB(logger, worker);
       await this.db.instantiate(bundle.mainModule);
       this.conn = await this.db.connect();
+
+      // Load HTTPFS extension for S3/HTTPS support
+      await this.conn.query(`INSTALL httpfs`);
+      await this.conn.query(`LOAD httpfs`);
 
       this.initialized = true;
       console.log("✓ GeneralDataManager initialized");
@@ -94,9 +97,9 @@ export class GeneralDataManager {
       try {
         console.log(`Scanning schema: ${fileName}`);
 
-        // Query schema only (fast - just metadata)
+        // Direct query - fileUrl is from trusted manifest, not user input
         const schemaResult = await this.conn.query(`
-          SELECT * FROM parquet_scan('${fileUrl}') LIMIT 0
+        SELECT * FROM parquet_scan('${fileUrl}') LIMIT 0
         `);
 
         const schema = schemaResult.schema.fields.map((field) => ({
@@ -292,7 +295,10 @@ export class GeneralDataManager {
   isValidS3Url(url) {
     return (
       url.startsWith("s3://") ||
-      url.match(/^https?:\/\/.*\.s3[.-].*\.amazonaws\.com/i)
+      // Match: https://bucket-name.s3.region.amazonaws.com/...
+      url.match(/^https?:\/\/[^/]+\.s3[.-][^/]+\.amazonaws\.com\//i) ||
+      // Match: https://s3.region.amazonaws.com/bucket-name/...
+      url.match(/^https?:\/\/s3[.-][^/]+\.amazonaws\.com\/[^/]+/i)
     );
   }
 

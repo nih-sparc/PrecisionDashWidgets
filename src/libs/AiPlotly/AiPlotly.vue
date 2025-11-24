@@ -138,7 +138,6 @@ async function loadData() {
 function generateSystemPrompt(schema, currentConfig = null) {
   let catalogDescription = "";
 
-  // If we have a catalog (folder mode), include it
   if (catalogInfo.value && dataManager.value.catalog) {
     catalogDescription = `
 DATA CATALOG:
@@ -149,15 +148,6 @@ IMPORTANT: When generating queries:
 2. Use the full file URL from the catalog in parquet_scan()
 3. You can JOIN multiple files if needed using common keys like cell_id
 4. Always include LIMIT clause (max 50000)
-
-Example multi-file query:
-SELECT c.cell_type, AVG(g.mean_expr) as avg_expression
-FROM parquet_scan('https://.../cells.parquet') c
-JOIN parquet_scan('https://.../gene_stats.parquet') g 
-  ON c.cell_id = g.cell_id
-WHERE g.gene_name = 'BRCA1'
-GROUP BY c.cell_type
-LIMIT 1000
 `;
   }
 
@@ -180,8 +170,70 @@ CURRENT PLOT STATE:
     : ""
 }
 
-// ... rest of your existing prompt
-`;
+You must determine if the user's request requires:
+A) DATA CHANGE - New SQL query needed (different columns, filtering, aggregation)
+B) VISUAL CHANGE - Only Plotly config updates (colors, sizes, hover, titles, legend)
+
+CRITICAL Security Rules:
+1. MUST include a LIMIT clause in every query (maximum 50000, recommended 1000-10000)
+2. Only use SELECT statements
+3. Only reference columns that exist in the schema
+4. Only use parquet_scan() with the full URLs from the catalog
+5. Keep queries simple - maximum 2 levels of subqueries
+
+For DATA CHANGES, return JSON:
+{
+  "changeType": "data",
+  "sql": "SELECT ... LIMIT 1000",
+  "plotType": "scatter|bar|line|pie|histogram|box|violin",
+  "xAxis": "column_name",
+  "yAxis": "column_name",
+  "title": "Plot Title",
+  "description": "Brief description",
+  "groupBy": "optional_grouping_column_for_violin"
+}
+
+For VISUAL CHANGES, return JSON:
+{
+  "changeType": "visual",
+  "updates": {
+    "marker.size": 12,
+    "marker.color": "blue",
+    "marker.opacity": 0.8,
+    "hovertemplate": "Custom: %{x}<br>Value: %{y}",
+    "layout.title.text": "New Title",
+    "layout.xaxis.title.text": "X Label",
+    "layout.yaxis.title.text": "Y Label",
+    "layout.showlegend": true
+  },
+  "description": "What changed"
+}
+
+PLOTLY CONFIG REFERENCE for visual changes:
+- marker.size: number (point size)
+- marker.color: string or array (color name, hex, or RGB)
+- marker.opacity: number 0-1 (transparency)
+- marker.line.width: number (point border width)
+- marker.line.color: string (point border color)
+- hovertemplate: string (custom hover text, use %{x}, %{y}, %{text})
+- layout.title.text: string (main title)
+- layout.xaxis.title.text: string (x-axis label)
+- layout.yaxis.title.text: string (y-axis label)
+- layout.showlegend: boolean
+- line.width: number (for line plots)
+- line.color: string (for line plots)
+- fillcolor: string (for violin/box plots)
+
+Plot Type Guide:
+- scatter: Compare two continuous variables with points
+- line: Show trends over time or ordered data
+- bar: Compare values across categories
+- pie: Show proportions of a whole
+- histogram: Show distribution of a single variable
+- box: Show distribution summary (quartiles, outliers)
+- violin: Show full distribution shape, ideal for comparing distributions across groups
+
+IMPORTANT: Return ONLY valid JSON, no markdown, no explanation outside the JSON.`;
 
   return basePrompt;
 }
