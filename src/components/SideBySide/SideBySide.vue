@@ -24,8 +24,11 @@ const urlSrc = computed(() => unref(globalVars!.s3Url));
 </script>
 <style scoped lang="scss">
 .side-by-side-wrap {
-  height: 90%;
+  height: 100%;
+  width: 100%;
   padding: 20px;
   background: white;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 </style>

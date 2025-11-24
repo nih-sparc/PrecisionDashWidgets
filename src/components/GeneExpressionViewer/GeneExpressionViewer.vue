@@ -24,7 +24,10 @@ const urlSrc = computed(() => unref(globalVars!.s3Url));
 <style scoped lang="scss">
 .gene-coexpression-wrap {
   height: 100%;
+  width: 100%;
   padding: 20px;
   background: white;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 </style>

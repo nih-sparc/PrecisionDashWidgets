@@ -374,7 +374,7 @@ import {
 } from "vue";
 import * as d3 from "d3";
 import createRegl from "regl";
-import { UMAPGeneViewer } from "./dataManager";
+import { UMAPGeneViewer } from "../dataManager";
 
 // Props
 const props = defineProps({
@@ -596,6 +596,8 @@ async function visualize() {
     gene2Data.value = await viewer.value.getGeneExpression(gene2.value);
 
     loadingMessage.value = "Rendering visualization...";
+    currentZoom.value = null;
+    hoveredPoint.value = null;
     loading.value = false;
     loadingMessage.value = "";
 
@@ -762,22 +764,18 @@ async function renderChart() {
   const pad = 0; // padding already in outer container
   const width = Math.max(1, Math.floor(rect.width - pad));
   const height = Math.max(1, Math.floor(rect.height - pad));
-  const sizeChanged =
-    width !== lastCanvasSize.value.w || height !== lastCanvasSize.value.h;
 
-  if (sizeChanged) {
-    canvas.width = width;
-    canvas.height = height;
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-    lastCanvasSize.value = { w: width, h: height };
-    // Recreate REGL on size change to keep viewport correct
-    if (reglInstance.value) {
-      try {
-        reglInstance.value.destroy();
-      } catch {}
-      reglInstance.value = null;
-    }
+  canvas.width = width;
+  canvas.height = height;
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  lastCanvasSize.value = { w: width, h: height };
+  // Recreate REGL on size change to keep viewport correct
+  if (reglInstance.value) {
+    try {
+      reglInstance.value.destroy();
+    } catch {}
+    reglInstance.value = null;
   }
 
   // REGL setup
@@ -1236,6 +1234,7 @@ async function updateVisualization() {
   min-height: 0;
   flex: 0 0 auto;
   gap: 16px;
+  overflow: hidden;
 }
 .viewer-right {
   display: flex;
@@ -1250,7 +1249,8 @@ async function updateVisualization() {
   border: 1px solid #e2e8f0;
   border-radius: 2px;
   padding: 0;
-  flex: 1 1 50%;
+  flex: 1;
+  min-height: 0;
 }
 .stats-panel {
   background: linear-gradient(
@@ -1260,17 +1260,20 @@ async function updateVisualization() {
   );
   border: 1px solid var(--border-color);
   border-radius: 2px;
-  padding: 24px;
+  padding: 12px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 20px;
-  flex: 1 1 50%;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
 }
 .controls-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
+  padding: 8px 24px;
+  gap: 4px;
   border-bottom: 1px solid #e2e8f0;
   background: linear-gradient(180deg, #fafbfc 0%, #ffffff 100%);
 }
@@ -1310,7 +1313,7 @@ async function updateVisualization() {
 }
 
 .genes-section {
-  padding: 24px;
+  padding: 8px;
 }
 .genes-input-group {
   grid-template-columns: 1fr auto 1fr;
@@ -1465,8 +1468,7 @@ async function updateVisualization() {
 .stat-item {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 16px;
+  padding: 8px;
   background: white;
   border-radius: 2px;
 }
@@ -1754,19 +1756,18 @@ async function updateVisualization() {
   .controls-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 16px;
-    padding: 16px 20px;
+    padding: 8px 20px;
   }
   .genes-input-group {
     grid-template-columns: 1fr;
-    gap: 16px;
   }
   .vs-separator {
     order: 2;
     padding: 8px 0;
   }
   .genes-section {
-    padding: 20px;
+    padding: 8px;
   }
 }
 </style>
+../dataManager

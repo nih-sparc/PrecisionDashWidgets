@@ -13,8 +13,6 @@ export class UMAPGeneViewer {
 
   async initialize() {
     try {
-      console.log("Initializing DuckDB-WASM...");
-
       // Get DuckDB bundles
       const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
       const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
@@ -34,12 +32,8 @@ export class UMAPGeneViewer {
       await this.db.instantiate(bundle.mainModule);
       this.conn = await this.db.connect();
 
-      console.log("DuckDB initialized successfully");
-
       // Load essential data
       await this.loadEssentialData();
-
-      console.log("Data manager ready!");
     } catch (error) {
       console.error("Failed to initialize data manager:", error);
       throw new Error(`Initialization failed: ${error.message}`);
@@ -86,7 +80,7 @@ export class UMAPGeneViewer {
 
     for (const file of filesToLoad) {
       try {
-        console.log(`Loading ${file.name} from S3...`);
+        console.log(file.path);
         const response = await fetch(file.path);
 
         if (!response.ok) {
@@ -107,8 +101,6 @@ export class UMAPGeneViewer {
           file.name,
           new Uint8Array(arrayBuffer)
         );
-
-        console.log(`✓ Loaded ${file.name}`);
       } catch (error) {
         if (file.required) {
           throw error;
@@ -120,7 +112,6 @@ export class UMAPGeneViewer {
     // Load cell metadata first
     let cellMetadata = new Map();
     try {
-      console.log("Loading cell metadata...");
       // Try metadata.parquet first
       try {
         const metaResult = await this.conn.query(
@@ -128,16 +119,9 @@ export class UMAPGeneViewer {
         );
         const metaArray = metaResult.toArray().map((row) => row.toJSON());
 
-        console.log(`Raw metadata sample:`, metaArray[0]); // Debug
-
         metaArray.forEach((row) => {
           cellMetadata.set(row.cell_id, row);
         });
-        console.log(`✓ Loaded metadata for ${cellMetadata.size} cells`);
-        console.log(
-          `Sample metadata entry:`,
-          cellMetadata.values().next().value
-        ); // Debug
       } catch (e) {
         // Fall back to cells.parquet
         console.log("metadata.parquet not found, trying cells.parquet...");
@@ -146,35 +130,24 @@ export class UMAPGeneViewer {
         );
         const cellsArray = cellsResult.toArray().map((row) => row.toJSON());
 
-        console.log(`Raw cells sample:`, cellsArray[0]); // Debug
-
         cellsArray.forEach((row) => {
           cellMetadata.set(row.cell_id, row);
         });
-        console.log(
-          `✓ Loaded metadata for ${cellMetadata.size} cells from cells.parquet`
-        );
-        console.log(`Sample cells entry:`, cellMetadata.values().next().value); // Debug
       }
     } catch (error) {
       console.warn("Could not load cell metadata:", error);
     }
 
     // Query UMAP data and merge with metadata
-    console.log("Querying UMAP data...");
+
     const umapResult = await this.conn.query('SELECT * FROM "umap.parquet"');
     const umapArray = umapResult.toArray().map((row) => row.toJSON());
-
-    console.log(`Sample UMAP row before merge:`, umapArray[0]); // Debug
 
     this.umapData = umapArray.map((umapRow) => {
       const metadata = cellMetadata.get(umapRow.cell_id) || {};
       const merged = { ...umapRow, ...metadata };
       return merged;
     });
-
-    console.log(`Sample UMAP row after merge:`, this.umapData[0]); // Debug
-    console.log(`✓ Loaded ${this.umapData.length} cells (UMAP with metadata)`);
 
     // Try to query tSNE data and merge with metadata
     try {
@@ -184,9 +157,6 @@ export class UMAPGeneViewer {
         const metadata = cellMetadata.get(tsneRow.cell_id) || {};
         return { ...tsneRow, ...metadata };
       });
-      console.log(
-        `✓ Loaded ${this.tsneData.length} cells (tSNE with metadata)`
-      );
     } catch {
       console.log("tSNE data not available");
       this.tsneData = null;
@@ -280,7 +250,6 @@ export class UMAPGeneViewer {
   async getGeneExpression(geneName) {
     // Check cache first
     if (this.geneCache.has(geneName)) {
-      console.log(`✓ Using cached data for ${geneName}`);
       return this.geneCache.get(geneName);
     }
 
@@ -298,7 +267,6 @@ export class UMAPGeneViewer {
       }
 
       const geneId = geneIdArray[0].toJSON().gene_id;
-      console.log(`Gene ${geneName} has ID: ${geneId}`);
 
       // Look up gene location
       const locationResult = await this.conn.query(`
@@ -316,7 +284,6 @@ export class UMAPGeneViewer {
       const location = locationData.location;
       const isPrecomputed = locationData.is_precomputed;
 
-      console.log(`Loading ${geneName} from S3: ${location}...`);
       const startTime = performance.now();
 
       let geneData;
@@ -373,11 +340,11 @@ export class UMAPGeneViewer {
       }
 
       const loadTime = performance.now() - startTime;
-      console.log(
-        `✓ Loaded ${geneName} in ${loadTime.toFixed(0)}ms (${
-          geneData.length
-        } expressing cells)`
-      );
+      //   console.log(
+      //     `✓ Loaded ${geneName} in ${loadTime.toFixed(0)}ms (${
+      //       geneData.length
+      //     } expressing cells)`
+      //   );
 
       // Cache it
       this.geneCache.set(geneName, geneData);
@@ -386,6 +353,61 @@ export class UMAPGeneViewer {
       console.error(`Failed to load gene ${geneName}:`, error);
       throw error;
     }
+  }
+  // New generic query method
+  async executeCustomQuery(sql, allowedTables = []) {
+    // Validation layer
+    if (!isValidQuery(sql, allowedTables)) {
+      throw new Error("Invalid query - security check failed");
+    }
+
+    try {
+      const result = await db.query(sql);
+      return result.toArray();
+    } catch (error) {
+      console.error("Query execution failed:", error);
+      throw error;
+    }
+  }
+
+  // SQL Guardrails
+  isValidQuery(sql, allowedTables) {
+    const normalized = sql.toLowerCase().trim();
+
+    // Whitelist: only SELECT statements
+    if (!normalized.startsWith("select")) {
+      return false;
+    }
+
+    // Blacklist: no data modification
+    const forbidden = [
+      "insert",
+      "update",
+      "delete",
+      "drop",
+      "alter",
+      "create",
+      "grant",
+    ];
+    if (forbidden.some((cmd) => normalized.includes(cmd))) {
+      return false;
+    }
+
+    // Only allow parquet_scan from specific S3 patterns
+    if (normalized.includes("parquet_scan")) {
+      const s3Pattern = /parquet_scan\(['"]s3:\/\/your-allowed-bucket\//;
+      if (!s3Pattern.test(sql)) {
+        return false;
+      }
+    }
+
+    // No nested queries beyond 2 levels (prevent complexity attacks)
+    const subqueryDepth = (sql.match(/\(/g) || []).length;
+    if (subqueryDepth > 4) {
+      return false;
+    }
+
+    return true;
   }
 
   hasTsne() {
@@ -398,6 +420,5 @@ export class UMAPGeneViewer {
 
   clearCache() {
     this.geneCache.clear();
-    console.log("Gene cache cleared");
   }
 }

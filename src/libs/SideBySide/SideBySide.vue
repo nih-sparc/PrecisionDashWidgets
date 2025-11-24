@@ -180,7 +180,7 @@ import {
 } from "vue";
 import * as d3 from "d3";
 import createRegl from "regl";
-import { UMAPGeneViewer } from "../GeneExpressionViewer/dataManager";
+import { UMAPGeneViewer } from "../dataManager";
 
 // Props
 const props = defineProps({
@@ -896,10 +896,7 @@ async function renderMetadataUMAP() {
     values.map((v) => String(v)),
     subsetCategories
   );
-  console.log(
-    "subsetCategories initialized with:",
-    Array.from(subsetCategories.value)
-  );
+
   // Prepare points
   const points = umapData.value.map((d) => ({
     ...d,
@@ -1421,11 +1418,6 @@ function drawLeftHighlightedPoint(idx, tr) {
 async function renderGeneUMAP() {
   if (!selectedGene.value) return;
 
-  console.log("=== renderGeneUMAP START ===");
-  console.log("selectedMetadataColumn:", selectedMetadataColumn.value);
-  console.log("subsetCategories size:", subsetCategories.value.size);
-  console.log("subsetCategories contents:", Array.from(subsetCategories.value));
-
   await nextTick();
   const canvas = rightCanvas.value;
   if (!canvas || !umapData.value.length) return;
@@ -1522,13 +1514,7 @@ async function renderGeneUMAP() {
 
     const positions = [];
     const colors = [];
-    console.log("=== About to assign colors ===");
-    console.log("Total points:", points.length);
-    console.log("subsetCategories:", Array.from(subsetCategories.value));
-    console.log(
-      "Sample point metadata:",
-      points[0][selectedMetadataColumn.value]
-    );
+
     points.forEach((p) => {
       const categoryValue = String(p[selectedMetadataColumn.value]);
       positions.push(xScale(p.x), yScale(p.y));
@@ -1859,7 +1845,6 @@ function formatValue(key, value) {
 .controls {
   display: flex;
   flex-direction: column;
-  gap: 12px;
   height: 72px;
   flex-shrink: 0;
   margin-top: 16px;
@@ -2220,3 +2205,4 @@ function formatValue(key, value) {
   }
 }
 </style>
+../dataManager
