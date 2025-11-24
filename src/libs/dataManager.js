@@ -354,61 +354,6 @@ export class UMAPGeneViewer {
       throw error;
     }
   }
-  // New generic query method
-  async executeCustomQuery(sql, allowedTables = []) {
-    // Validation layer
-    if (!isValidQuery(sql, allowedTables)) {
-      throw new Error("Invalid query - security check failed");
-    }
-
-    try {
-      const result = await db.query(sql);
-      return result.toArray();
-    } catch (error) {
-      console.error("Query execution failed:", error);
-      throw error;
-    }
-  }
-
-  // SQL Guardrails
-  isValidQuery(sql, allowedTables) {
-    const normalized = sql.toLowerCase().trim();
-
-    // Whitelist: only SELECT statements
-    if (!normalized.startsWith("select")) {
-      return false;
-    }
-
-    // Blacklist: no data modification
-    const forbidden = [
-      "insert",
-      "update",
-      "delete",
-      "drop",
-      "alter",
-      "create",
-      "grant",
-    ];
-    if (forbidden.some((cmd) => normalized.includes(cmd))) {
-      return false;
-    }
-
-    // Only allow parquet_scan from specific S3 patterns
-    if (normalized.includes("parquet_scan")) {
-      const s3Pattern = /parquet_scan\(['"]s3:\/\/your-allowed-bucket\//;
-      if (!s3Pattern.test(sql)) {
-        return false;
-      }
-    }
-
-    // No nested queries beyond 2 levels (prevent complexity attacks)
-    const subqueryDepth = (sql.match(/\(/g) || []).length;
-    if (subqueryDepth > 4) {
-      return false;
-    }
-
-    return true;
-  }
 
   hasTsne() {
     return this.tsneData !== null;

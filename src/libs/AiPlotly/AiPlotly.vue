@@ -2,23 +2,14 @@
 import { ref, onMounted, watch } from "vue";
 import { ElMessage } from "element-plus";
 import Plotly from "plotly.js-dist";
-import { UMAPGeneViewer } from "../dataManager";
+import { GeneralDataManager } from "../generalizedDataManager";
 
 // Props
 const props = defineProps({
-  apiKey: {
+  claudeApiKey: {
     type: String,
     required: false,
     default: "",
-  },
-  initialDataUrl: {
-    type: String,
-    default: "",
-  },
-  dataPath: {
-    type: String,
-    default:
-      "https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2",
   },
 });
 
@@ -26,16 +17,18 @@ const props = defineProps({
 const emit = defineEmits(["save-config", "plot-generated"]);
 
 // Reactive state
-const dataUrl = ref(props.initialDataUrl);
+const dataUrl = ref(
+  "https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2"
+);
 const userPrompt = ref("");
 const dataLoaded = ref(false);
 const loading = ref(false);
 const plotlyDiv = ref(null);
 const currentSchema = ref([]);
 const currentPlotConfig = ref(null);
-const dataPreview = ref([]);
 const dataManager = ref(null);
 const isDataManagerReady = ref(false);
+const catalogInfo = ref(null);
 const conversationHistory = ref([]);
 const lastExecutedSQL = ref("");
 const cachedQueryResult = ref(null);
@@ -43,7 +36,7 @@ const cachedQueryResult = ref(null);
 // Initialize data manager
 async function initializeDataManager() {
   try {
-    const manager = new UMAPGeneViewer(props.dataPath);
+    const manager = new GeneralDataManager();
     await manager.initialize();
     dataManager.value = manager;
     isDataManagerReady.value = true;
@@ -54,15 +47,12 @@ async function initializeDataManager() {
   }
 }
 
-// Load data from URL
 async function loadData() {
   if (!dataUrl.value) {
     ElMessage.warning("Please provide a data URL");
     return;
   }
 
-  // Ensure data manager is ready
-  console.log(isDataManagerReady);
   if (!isDataManagerReady.value) {
     await initializeDataManager();
   }
@@ -74,16 +64,67 @@ async function loadData() {
 
   loading.value = true;
   try {
-    const schemaSql = `SELECT * FROM parquet_scan('${dataUrl.value}') LIMIT 10`;
-    const sample = await dataManager.value.executeCustomQuery(schemaSql);
+    // Check if single file or folder
+    if (dataUrl.value.endsWith(".parquet")) {
+      // SINGLE FILE MODE
+      console.log("Single file mode");
+      const schemaSql = `SELECT * FROM parquet_scan('${dataUrl.value}') LIMIT 10`;
+      const sample = await dataManager.value.executeQuery(schemaSql);
 
-    if (sample && sample.length > 0) {
-      currentSchema.value = Object.keys(sample[0]);
-      dataPreview.value = sample;
-      dataLoaded.value = true;
-      ElMessage.success("Data loaded successfully");
+      if (sample && sample.length > 0) {
+        currentSchema.value = Object.keys(sample[0]);
+        dataLoaded.value = true;
+        ElMessage.success("Data loaded successfully");
+      } else {
+        ElMessage.error("No data found");
+      }
     } else {
-      ElMessage.error("No data found");
+      // FOLDER MODE - look for manifest
+      // console.log("Folder mode - looking for manifest.json");
+      // const manifestUrl = `${dataUrl.value}/manifest.json`;
+      // const manifestResponse = await fetch(manifestUrl);
+
+      // if (!manifestResponse.ok) {
+      //   throw new Error(
+      //     `No manifest.json found. Please provide either:\n` +
+      //       `1. A direct .parquet file URL, or\n` +
+      //       `2. A folder URL with manifest.json`
+      //   );
+      // }
+
+      // const manifest = await manifestResponse.json();
+      const manifest = {
+        files: [
+          "umap.parquet",
+          "tsne.parquet",
+          "gene_locations.parquet",
+          "gene_stats.parquet",
+          "cells.parquet",
+          "genes.parquet",
+          "metadata.parquet",
+        ],
+      };
+      if (!manifest.files || manifest.files.length === 0) {
+        throw new Error("manifest.json is empty or has no files listed");
+      }
+
+      // Catalog all files from manifest
+      const catalog = await dataManager.value.catalogFolder(
+        dataUrl.value,
+        manifest.files
+      );
+      catalogInfo.value = catalog;
+      // Show all columns across all files
+      const allColumns = new Set();
+      catalog.files.forEach((file) => {
+        file.columns.forEach((col) => allColumns.add(col.name));
+      });
+      currentSchema.value = Array.from(allColumns);
+
+      dataLoaded.value = true;
+      ElMessage.success(
+        `Cataloged ${catalog.files.length} files from manifest`
+      );
     }
   } catch (error) {
     console.error("Error loading data:", error);
@@ -95,7 +136,34 @@ async function loadData() {
 }
 
 function generateSystemPrompt(schema, currentConfig = null) {
+  let catalogDescription = "";
+
+  // If we have a catalog (folder mode), include it
+  if (catalogInfo.value && dataManager.value.catalog) {
+    catalogDescription = `
+DATA CATALOG:
+${dataManager.value.getCatalogDescription()}
+
+IMPORTANT: When generating queries:
+1. Analyze which file(s) contain the needed columns
+2. Use the full file URL from the catalog in parquet_scan()
+3. You can JOIN multiple files if needed using common keys like cell_id
+4. Always include LIMIT clause (max 50000)
+
+Example multi-file query:
+SELECT c.cell_type, AVG(g.mean_expr) as avg_expression
+FROM parquet_scan('https://.../cells.parquet') c
+JOIN parquet_scan('https://.../gene_stats.parquet') g 
+  ON c.cell_id = g.cell_id
+WHERE g.gene_name = 'BRCA1'
+GROUP BY c.cell_type
+LIMIT 1000
+`;
+  }
+
   const basePrompt = `You are a data visualization assistant that helps users iteratively build and refine plots.
+
+${catalogDescription}
 
 Available columns: ${schema.join(", ")}
 
@@ -112,244 +180,10 @@ CURRENT PLOT STATE:
     : ""
 }
 
-You must determine if the user's request requires:
-A) DATA CHANGE - New SQL query needed (different columns, filtering, aggregation)
-B) VISUAL CHANGE - Only Plotly config updates (colors, sizes, hover, titles, legend)
-
-CRITICAL Security Rules:
-1. MUST include a LIMIT clause in every query (maximum 50000, recommended 1000-10000)
-2. Only use SELECT statements
-3. Only reference columns that exist in the schema
-4. Only use parquet_scan() with s3:// URLs
-5. Keep queries simple - maximum 2 levels of subqueries
-
----
-
-For DATA CHANGES, return JSON:
-{
-  "changeType": "data",
-  "sql": "SELECT ... LIMIT 1000",
-  "plotType": "scatter|bar|line|pie|histogram|box|violin",
-  "xAxis": "column_name",
-  "yAxis": "column_name",
-  "title": "Plot Title",
-  "description": "Brief description",
-  "groupBy": "optional_grouping_column_for_violin"
-}
-
-For VISUAL CHANGES, return JSON:
-{
-  "changeType": "visual",
-  "updates": {
-    "marker.size": 12,
-    "marker.color": "blue",
-    "marker.opacity": 0.8,
-    "hovertemplate": "Custom: %{x}<br>Value: %{y}",
-    "layout.title": "New Title",
-    "layout.xaxis.title": "X Label",
-    "layout.yaxis.title": "Y Label",
-    "layout.showlegend": true
-  },
-  "description": "What changed"
-}
-
-PLOTLY CONFIG REFERENCE for visual changes:
-- marker.size: number (point size)
-- marker.color: string or array (color name, hex, or RGB)
-- marker.opacity: number 0-1 (transparency)
-- marker.line.width: number (point border width)
-- marker.line.color: string (point border color)
-- hovertemplate: string (custom hover text, use %{x}, %{y}, %{text})
-- layout.title.text: string (main title)
-- layout.xaxis.title.text: string (x-axis label)
-- layout.yaxis.title.text: string (y-axis label)
-- layout.showlegend: boolean
-- layout.legend.x: number (legend x position)
-- layout.legend.y: number (legend y position)
-- line.width: number (for line plots)
-- line.color: string (for line plots)
-- fillcolor: string (for violin/box plots)
-
-Plot Type Guide:
-- scatter/line: Compare two continuous variables
-- bar: Compare values across categories
-- pie: Show proportions of a whole
-- histogram: Show distribution of a single variable
-- box: Show distribution summary (quartiles, outliers)
-- violin: Show full distribution shape, ideal for comparing distributions across groups
-
-Be concise and accurate. Only use the available columns.`;
+// ... rest of your existing prompt
+`;
 
   return basePrompt;
-}
-
-// Validate SQL query for security
-function isValidQuery(sql) {
-  if (!sql) {
-    return { valid: false, error: "Query is empty" };
-  }
-
-  const normalized = sql.toLowerCase().trim();
-  const original = sql.trim();
-
-  // 1. Must start with SELECT
-  if (!normalized.startsWith("select")) {
-    return {
-      valid: false,
-      error: "Query must start with SELECT. Only read operations are allowed.",
-    };
-  }
-
-  // 2. Prohibited keywords (write/modify operations)
-  const prohibited = [
-    "drop",
-    "delete",
-    "insert",
-    "update",
-    "alter",
-    "create",
-    "truncate",
-    "exec",
-    "execute",
-    "grant",
-    "revoke",
-  ];
-  for (const keyword of prohibited) {
-    // Use word boundaries to avoid false positives (e.g., "selected" shouldn't match "delete")
-    const regex = new RegExp(`\\b${keyword}\\b`, "i");
-    if (regex.test(normalized)) {
-      return {
-        valid: false,
-        error: `Prohibited keyword detected: "${keyword}". Only SELECT queries are allowed.`,
-      };
-    }
-  }
-
-  // 3. Require LIMIT clause
-  const limitMatch = normalized.match(/\blimit\s+(\d+)/i);
-  if (!limitMatch) {
-    return {
-      valid: false,
-      error:
-        "Query must include a LIMIT clause (e.g., LIMIT 1000). Maximum allowed: 50000 rows.",
-    };
-  }
-
-  const limitValue = parseInt(limitMatch[1], 10);
-  if (limitValue > 50000) {
-    return {
-      valid: false,
-      error: `LIMIT value ${limitValue} exceeds maximum allowed (50000). Please reduce the limit.`,
-    };
-  }
-
-  if (limitValue <= 0) {
-    return {
-      valid: false,
-      error: "LIMIT value must be greater than 0.",
-    };
-  }
-
-  // 4. Validate parquet_scan() URLs
-  const parquetMatches = original.match(
-    /parquet_scan\s*\(\s*['"]([^'"]+)['"]\s*\)/gi
-  );
-  if (parquetMatches) {
-    for (const match of parquetMatches) {
-      const urlMatch = match.match(/['"]([^'"]+)['"]/);
-      if (urlMatch) {
-        const url = urlMatch[1];
-
-        // Must be s3:// or https:// S3 URL
-        if (
-          !url.startsWith("s3://") &&
-          !url.match(/^https?:\/\/.*\.s3[.-].*\.amazonaws\.com/i)
-        ) {
-          return {
-            valid: false,
-            error: `Invalid parquet_scan() URL: "${url}". Only S3 URLs (s3://* or https://*.s3.amazonaws.com/*) are allowed.`,
-          };
-        }
-      }
-    }
-  }
-
-  // 5. Check subquery nesting depth (max 2 levels)
-  const subqueryDepth = countSubqueryDepth(normalized);
-  if (subqueryDepth > 2) {
-    return {
-      valid: false,
-      error: `Query has ${subqueryDepth} levels of subqueries. Maximum allowed is 2 levels to prevent complexity attacks.`,
-    };
-  }
-
-  // 6. Check for suspicious patterns
-  const suspiciousPatterns = [
-    {
-      pattern: /;\s*select/i,
-      message:
-        "Multiple statements detected. Only single SELECT queries are allowed.",
-    },
-    {
-      pattern: /\/\*.*\*\//s,
-      message: "Block comments are not allowed in queries.",
-    },
-    { pattern: /--.*$/m, message: "Line comments are not allowed in queries." },
-    { pattern: /\binto\s+outfile\b/i, message: "INTO OUTFILE is not allowed." },
-    {
-      pattern: /\bload_extension\b/i,
-      message: "Loading extensions is not allowed.",
-    },
-    { pattern: /\bcopy\b/i, message: "COPY command is not allowed." },
-  ];
-
-  for (const { pattern, message } of suspiciousPatterns) {
-    if (pattern.test(normalized)) {
-      return { valid: false, error: message };
-    }
-  }
-
-  return { valid: true, error: null };
-}
-
-// Helper function to count subquery nesting depth
-function countSubqueryDepth(sql) {
-  let depth = 0;
-  let maxDepth = 0;
-  let inString = false;
-  let stringChar = null;
-
-  for (let i = 0; i < sql.length; i++) {
-    const char = sql[i];
-    const prevChar = i > 0 ? sql[i - 1] : null;
-
-    // Handle string literals
-    if ((char === "'" || char === '"') && prevChar !== "\\") {
-      if (!inString) {
-        inString = true;
-        stringChar = char;
-      } else if (char === stringChar) {
-        inString = false;
-        stringChar = null;
-      }
-    }
-
-    // Count parentheses only outside of strings
-    if (!inString) {
-      if (char === "(") {
-        // Check if this is a SELECT subquery
-        const nextChars = sql.substring(i, i + 20).toLowerCase();
-        if (nextChars.includes("select")) {
-          depth++;
-          maxDepth = Math.max(maxDepth, depth);
-        }
-      } else if (char === ")") {
-        if (depth > 0) depth--;
-      }
-    }
-  }
-
-  return maxDepth;
 }
 
 async function generateQuery() {
@@ -365,7 +199,7 @@ async function generateQuery() {
       await loadData();
     }
 
-    const apiKey = props.apiKey || import.meta.env.VITE_ANTHROPIC_API_KEY;
+    const apiKey = props.claudeApiKey || import.meta.env.VITE_ANTHROPIC_API_KEY;
     if (!apiKey) {
       ElMessage.error("API key not configured");
       return;
@@ -414,7 +248,7 @@ async function generateQuery() {
     // Handle based on change type
     if (claudeOutput.changeType === "data") {
       // Validate and execute new query
-      const validation = isValidQuery(claudeOutput.sql);
+      const validation = await dataManager.value.isValidQuery(claudeOutput.sql);
       if (!validation.valid) {
         ElMessage.error({
           message: `Security validation failed: ${validation.error}`,
@@ -431,9 +265,7 @@ async function generateQuery() {
         return;
       }
 
-      const result = await dataManager.value.executeCustomQuery(
-        claudeOutput.sql
-      );
+      const result = await dataManager.value.executeQuery(claudeOutput.sql);
       lastExecutedSQL.value = claudeOutput.sql;
       cachedQueryResult.value = result;
 
@@ -963,9 +795,7 @@ async function loadSavedConfig(savedConfig) {
     if (savedConfig.sql) {
       await loadData(); // Ensure schema is loaded
 
-      const freshData = await dataManager.value.executeCustomQuery(
-        savedConfig.sql
-      );
+      const freshData = await dataManager.value.executeQuery(savedConfig.sql);
       cachedQueryResult.value = freshData;
       lastExecutedSQL.value = savedConfig.sql;
 
@@ -1017,22 +847,10 @@ function clearPlot() {
   ElMessage.info("Plot cleared");
 }
 
-// Watch for data URL changes
-watch(
-  () => props.initialDataUrl,
-  (newUrl) => {
-    if (newUrl) {
-      dataUrl.value = newUrl;
-      loadData();
-    }
-  }
-);
-
 // Initialize on mount
 onMounted(async () => {
   await initializeDataManager();
-  console.log(props.initialDataUrl);
-  if (props.initialDataUrl) {
+  if (dataUrl.value) {
     loadData();
   }
 });
@@ -1086,7 +904,30 @@ onMounted(async () => {
         </el-tag>
       </div>
     </div>
-
+    <!-- Catalog info (folder mode only) -->
+    <div v-if="catalogInfo && catalogInfo.files" class="catalog-section">
+      <label class="input-label"
+        >Data Catalog ({{ catalogInfo.files.length }} files)</label
+      >
+      <el-collapse accordion>
+        <el-collapse-item
+          v-for="file in catalogInfo.files"
+          :key="file.name"
+          :title="`${file.name} (${file.columns.length} columns)`"
+        >
+          <div class="file-columns">
+            <el-tag
+              v-for="col in file.columns"
+              :key="col.name"
+              size="small"
+              type="info"
+            >
+              {{ col.name }}: {{ col.type }}
+            </el-tag>
+          </div>
+        </el-collapse-item>
+      </el-collapse>
+    </div>
     <!-- AI prompt input (only shows after data loaded) -->
     <div v-if="dataLoaded" class="prompt-section">
       <label class="input-label">Describe Your Visualization</label>
@@ -1163,6 +1004,22 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.catalog-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: #fff9e6;
+  border-radius: 6px;
+  border-left: 3px solid #f39c12;
+}
+
+.file-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
 /* Conversation History Section */
 .history-section {
   display: flex;
