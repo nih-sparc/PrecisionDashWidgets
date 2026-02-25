@@ -10,16 +10,29 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, unref, computed, watchEffect } from "vue";
+import { ref, unref, computed, watchEffect, onMounted } from "vue";
 import { usePrecisionStore } from "../../stores/precisionVars";
 import GeneCoexpressionViewer from "../../libs/GeneExpressionViewer/GeneCoexpressionViewer.vue";
 import { useDashboardGlobalVars } from "../../useGlobalVars";
 defineOptions({
   inheritAttrs: false,
 });
+const props = defineProps<{
+  initialGene1?: string;
+  initialGene2?: string;
+}>();
 const globalVars = useDashboardGlobalVars();
 const PrecisionVars = usePrecisionStore();
 const urlSrc = computed(() => unref(globalVars!.s3Url));
+
+onMounted(() => {
+  if (props.initialGene1 && PrecisionVars.selectedGene1 === null) {
+    PrecisionVars.setSelectedGene1(props.initialGene1);
+  }
+  if (props.initialGene2 && PrecisionVars.selectedGene2 === null) {
+    PrecisionVars.setSelectedGene2(props.initialGene2);
+  }
+});
 </script>
 <style scoped lang="scss">
 .gene-coexpression-wrap {

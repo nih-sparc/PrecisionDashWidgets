@@ -15,7 +15,7 @@
 import { ref, unref, computed, watchEffect } from 'vue';
 import { ElTooltip } from "element-plus";
 import { InfoFilled } from "@element-plus/icons-vue";
-import { DataExplorer} from "pennsieve-visualization"
+import { DataExplorer} from "@pennsieve-viz/core"
 import { useDashboardGlobalVars } from '../../useGlobalVars'
 defineOptions({
     inheritAttrs: false

@@ -10,16 +10,29 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, unref, computed, watchEffect } from "vue";
+import { ref, unref, computed, watchEffect, onMounted } from "vue";
 import { usePrecisionStore } from "../../stores/precisionVars";
 import ViolinPlot from "../../libs/ViolinPlot/ViolinPlot.vue";
 import { useDashboardGlobalVars } from "../../useGlobalVars";
 defineOptions({
   inheritAttrs: false,
 });
+const props = defineProps<{
+  initialGene?: string;
+  initialMetadataColumn?: string;
+}>();
 const globalVars = useDashboardGlobalVars();
 const PrecisionVars = usePrecisionStore();
 const urlSrc = computed(() => unref(globalVars!.s3Url));
+
+onMounted(() => {
+  if (props.initialGene && PrecisionVars.selectedGeneX === null) {
+    PrecisionVars.setSelectedGeneX(props.initialGene);
+  }
+  if (props.initialMetadataColumn && PrecisionVars.selectedMetadataColumn === null) {
+    PrecisionVars.setSelectedMetadataColumn(props.initialMetadataColumn);
+  }
+});
 
 // Map ViolinPlot's emitted keys to the correct store keys for GeneXDistribution
 function handleVarsUpdate(key: string, value: string | null) {

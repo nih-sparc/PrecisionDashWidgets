@@ -39,7 +39,7 @@
               <input
                 v-model="geneSearch"
                 type="text"
-                placeholder="Enter gene name (e.g., CDH9)"
+                placeholder="Gene name (e.g., CDH9)"
                 class="gene-input"
                 list="gene-suggestions"
                 @input="debouncedSearchGenes"
@@ -283,7 +283,7 @@ onBeforeUnmount(() => {
 function debouncedSearchGenes() {
   clearTimeout(searchTimeout);
   searchTimeout = setTimeout(async () => {
-    if (geneSearch.value.length < 2) {
+    if (geneSearch.value.length < 1) {
       geneSuggestions.value = [];
       return;
     }
@@ -361,8 +361,11 @@ function drawViolinPlot(data) {
 
   if (!data || data.length === 0) return;
 
+  const node = svg.node();
+  if (!node || !node.parentElement) return;
+
   // Get actual container dimensions
-  const container = svg.node().parentElement;
+  const container = node.parentElement;
   const rect = container.getBoundingClientRect();
   const width = rect.width;
   const height = rect.height;
@@ -785,6 +788,12 @@ function updateDataPoints() {
   background: white;
   color: #1a202c;
   transition: all 0.2s;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.gene-input::placeholder {
+  font-size: 13px;
 }
 
 .gene-input:hover {

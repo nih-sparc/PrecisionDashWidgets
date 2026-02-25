@@ -25,7 +25,7 @@ export class UMAPGeneViewer {
       );
 
       const worker = new Worker(worker_url);
-      const logger = new duckdb.ConsoleLogger();
+      const logger = new duckdb.VoidLogger();
 
       // Initialize database
       this.db = new duckdb.AsyncDuckDB(logger, worker);
@@ -80,7 +80,6 @@ export class UMAPGeneViewer {
 
     for (const file of filesToLoad) {
       try {
-        console.log(file.path);
         const response = await fetch(file.path);
 
         if (!response.ok) {

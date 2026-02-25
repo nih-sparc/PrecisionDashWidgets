@@ -9,7 +9,7 @@
 import { ref, watch,unref, computed, watchEffect } from 'vue';
 import { ElTooltip } from "element-plus";
 import { InfoFilled } from "@element-plus/icons-vue";
-import { UMAP} from "pennsieve-visualization"
+import { UMAP} from "@pennsieve-viz/core"
 import { useDashboardGlobalVars } from '../../useGlobalVars'
 defineOptions({
     inheritAttrs: false

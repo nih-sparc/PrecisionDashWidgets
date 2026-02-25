@@ -1,21 +1,23 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, markRaw } from "vue";
 
 import { MultiDashboard } from "../../PennsieveDashboard/src/components/index";
 import {
   GeneExpression,
   SideBySide,
   GeneXDistribution,
-  AiPlotly,
 } from "./components/index";
+
+const RawGeneExpression = markRaw(GeneExpression);
+const RawSideBySide = markRaw(SideBySide);
+const RawGeneXDistribution = markRaw(GeneXDistribution);
 //import ViolinPlot from "./libs/ViolinPlot/ViolinPlot.vue";
 
 //name = component key
 const availableWidgets = [
-  { name: "GeneExpression", component: GeneExpression },
-  { name: "SideBySide", component: SideBySide },
-  { name: "GeneXDistribution", component: GeneXDistribution },
-  { name: "AiPlotly", component: AiPlotly },
+  { name: "GeneExpression", component: RawGeneExpression },
+  { name: "SideBySide", component: RawSideBySide },
+  { name: "GeneXDistribution", component: RawGeneXDistribution },
 ];
 const services = {
   ApiUrl: "https://api.pennsieve.net",
@@ -28,10 +30,11 @@ const geneCoexpressionDash = {
       x: 0,
       y: 0,
       w: 12,
-      h: 9,
+      h: 11,
       componentKey: "GeneExpression",
       componentName: "Gene Expression",
-      component: GeneExpression,
+      component: RawGeneExpression,
+      Props: { initialGene1: "CDH9", initialGene2: "TAC1" },
     },
   ],
   availableWidgets,
@@ -48,10 +51,11 @@ const geneCellComparisonDash = {
       x: 0,
       y: 0,
       w: 12,
-      h: 9,
+      h: 11,
       componentKey: "SideBySide",
       componentName: "Side By Side Comparison",
-      component: SideBySide,
+      component: RawSideBySide,
+      Props: { initialGene: "CDH9" }
     },
   ],
   availableWidgets,
@@ -67,10 +71,11 @@ const GeneXDistributionDash = {
       x: 0,
       y: 0,
       w: 12,
-      h: 9,
+      h: 11,
       componentKey: "GeneXDistribution",
       componentName: "Gene Expresion Distribution",
-      component: GeneXDistribution,
+      component: RawGeneXDistribution,
+      Props: { initialGene: "CDH9" }
     },
   ],
   availableWidgets,
@@ -79,35 +84,16 @@ const GeneXDistributionDash = {
   hideEditGrid: true,
   hideHeader: true,
 };
-const AiDash = {
-  defaultLayout: [
-    {
-      id: "AiPlotly-1",
-      x: 0,
-      y: 0,
-      w: 12,
-      h: 9,
-      componentKey: "AiPlotly",
-      componentName: "AI Generated Plotly",
-      component: AiPlotly,
-    },
-  ],
-  availableWidgets,
-  services,
-  name: "AI Plot",
-  hideEditGrid: true,
-  hideHeader: true,
-};
 // Reactive dashboard options
 const dashboardOptions = ref([
   geneCoexpressionDash,
   geneCellComparisonDash,
   GeneXDistributionDash,
-  AiDash,
 ]);
 </script>
 
 <template>
+
   <!-- Dashboard Content -->
 
   <!-- <ViolinPlot
@@ -118,6 +104,8 @@ const dashboardOptions = ref([
     class="dashboard-app"
     :dashboardOptions="dashboardOptions"
     :default="geneCoexpressionDash"
+    headerTitle="Precision Gene Analysis"
+    headerDescription="Select a dashboard view to explore different aspects of gene analysis. Choose between co-expression analysis or side-by-side cell/gene comparison."
   ></MultiDashboard>
 </template>
 

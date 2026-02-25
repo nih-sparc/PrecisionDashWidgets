@@ -122,7 +122,7 @@
                 <input
                   v-model="geneSearch"
                   type="text"
-                  placeholder="Enter gene name (e.g., CDH9)"
+                  placeholder="Gene name (e.g., CDH9)"
                   class="gene-input"
                   list="gene-suggestions"
                   @input="debouncedSearchGenes"
@@ -444,7 +444,7 @@ function setupResizeObservers() {
 function debouncedSearchGenes() {
   clearTimeout(searchTimeout);
   searchTimeout = setTimeout(async () => {
-    if (geneSearch.value.length < 2) {
+    if (geneSearch.value.length < 1) {
       geneSuggestions.value = [];
       return;
     }
@@ -1156,7 +1156,9 @@ function renderRightPanel() {
   if (!rightCanvas.value || !rightReglInstance || rightRenderScheduled) return;
   rightRenderScheduled = true;
   requestAnimationFrame(() => {
+    rightRenderScheduled = false;
     const canvas = rightCanvas.value;
+    if (!canvas || !rightReglInstance) return;
     rightReglInstance.clear({ color: [0.97, 0.98, 0.99, 1], depth: 1 });
 
     let scale = 1,
@@ -1894,6 +1896,12 @@ function formatValue(key, value) {
   background: white;
   color: #1a202c;
   transition: all 0.2s;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.gene-input::placeholder {
+  font-size: 13px;
 }
 
 .gene-input:hover {

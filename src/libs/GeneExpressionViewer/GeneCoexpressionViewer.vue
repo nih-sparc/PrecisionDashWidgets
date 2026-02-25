@@ -36,7 +36,7 @@
                 id="gene1-select"
                 v-model="gene1Search"
                 type="text"
-                placeholder="Enter gene name (e.g., CDH9)"
+                placeholder="Gene name (e.g., CDH9)"
                 @input="debouncedSearchGenes(1)"
                 :disabled="loading"
                 list="gene1-list"
@@ -68,7 +68,7 @@
                 id="gene2-select"
                 v-model="gene2Search"
                 type="text"
-                placeholder="Enter gene name (e.g., TAC1)"
+                placeholder="Gene name (e.g., TAC1)"
                 @input="debouncedSearchGenes(2)"
                 :disabled="loading"
                 list="gene2-list"
@@ -563,7 +563,7 @@ async function loadReductionData() {
 
 async function searchGenes(geneNumber) {
   const searchTerm = geneNumber === 1 ? gene1Search.value : gene2Search.value;
-  if (searchTerm.length < 2) {
+  if (searchTerm.length < 1) {
     (geneNumber === 1 ? gene1Suggestions : gene2Suggestions).value = [];
     return;
   }
@@ -1324,6 +1324,7 @@ async function updateVisualization() {
 }
 .gene-input-wrapper {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1353,6 +1354,8 @@ async function updateVisualization() {
   transition: all 0.2s;
   background: white;
   color: #1a202c;
+  min-width: 0;
+  box-sizing: border-box;
 }
 .gene-input:hover {
   border-color: #cbd5e1;
@@ -1369,6 +1372,7 @@ async function updateVisualization() {
 }
 .gene-input::placeholder {
   color: #94a3b8;
+  font-size: 13px;
 }
 .vs-separator {
   display: flex;

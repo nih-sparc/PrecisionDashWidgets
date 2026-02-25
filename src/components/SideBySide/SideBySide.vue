@@ -10,7 +10,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ref, unref, computed, watchEffect } from "vue";
+import { ref, unref, computed, watchEffect, onMounted } from "vue";
 
 import SideBySide from "../../libs/SideBySide/SideBySide.vue";
 import { useDashboardGlobalVars } from "../../useGlobalVars";
@@ -18,9 +18,22 @@ import { usePrecisionStore } from "../../stores/precisionVars";
 defineOptions({
   inheritAttrs: false,
 });
+const props = defineProps<{
+  initialGene?: string;
+  initialMetadataColumn?: string;
+}>();
 const globalVars = useDashboardGlobalVars();
 const PrecisionVars = usePrecisionStore();
 const urlSrc = computed(() => unref(globalVars!.s3Url));
+
+onMounted(() => {
+  if (props.initialGene && PrecisionVars.selectedGene === null) {
+    PrecisionVars.setSelectedGene(props.initialGene);
+  }
+  if (props.initialMetadataColumn && PrecisionVars.selectedMetadataColumn === null) {
+    PrecisionVars.setSelectedMetadataColumn(props.initialMetadataColumn);
+  }
+});
 </script>
 <style scoped lang="scss">
 .side-by-side-wrap {
