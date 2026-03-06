@@ -1754,8 +1754,7 @@ function getTooltipData(point) {
     "color",
     "opacity",
     "expr",
-    "norm",
-    "Donor_ID",
+    "norm"
   ]);
 
   // Add all non-excluded keys
