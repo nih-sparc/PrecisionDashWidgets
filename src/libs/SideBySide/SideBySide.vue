@@ -63,7 +63,6 @@
                 v-for="(item, idx) in metadataLegend"
                 :key="idx"
                 class="legend-item"
-                @click="toggleSubset(item.label)"
               >
                 <div
                   class="legend-color"
@@ -74,6 +73,7 @@
                     background: item.color,
                     borderColor: item.color,
                   }"
+                  @click="toggleSubset(item.label)"
                 >
                   <span
                     v-if="!subsetCategories.has(item.label)"
@@ -81,7 +81,14 @@
                     >✕</span
                   >
                 </div>
-                <span class="legend-label">{{ item.label }}</span>
+                <a
+                  v-if="selectedMetadataColumn.toLowerCase() === 'atlas_annotation'"
+                  class="legend-label legend-link"
+                  :href="`https://nervosensus.netlify.app/?view=cards&atlasannotation=${item.label}`"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >{{ item.label }}</a>
+                <span v-else class="legend-label">{{ item.label }}</span>
               </div>
             </div>
           </div>
@@ -1748,6 +1755,7 @@ function getTooltipData(point) {
     "opacity",
     "expr",
     "norm",
+    "Donor_ID",
   ]);
 
   // Add all non-excluded keys
@@ -2076,6 +2084,16 @@ function formatValue(key, value) {
 
 .legend-label {
   font-weight: 500;
+}
+
+.legend-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.legend-link:hover {
+  text-decoration: underline;
+  color: #667eea;
 }
 
 .tooltip {

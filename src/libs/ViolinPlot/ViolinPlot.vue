@@ -370,7 +370,10 @@ function drawViolinPlot(data) {
   const width = rect.width;
   const height = rect.height;
 
-  const margin = { top: 40, right: 40, bottom: 80, left: 80 };
+  // Dynamic bottom margin based on longest label rotated at -45°
+  const maxLabelLength = Math.max(...data.map((d) => d.category.length));
+  const estimatedLabelHeight = Math.min(maxLabelLength * 5.5, 200) + 40;
+  const margin = { top: 40, right: 40, bottom: Math.max(80, estimatedLabelHeight), left: 80 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
 
@@ -557,13 +560,41 @@ function drawViolinPlot(data) {
   });
 
   // X axis
-  g.append("g")
+  const xAxisGroup = g.append("g")
     .attr("transform", `translate(0,${innerHeight})`)
-    .call(d3.axisBottom(xScale))
-    .selectAll("text")
-    .attr("transform", "rotate(-45)")
-    .style("text-anchor", "end")
-    .style("font-size", "12px");
+    .call(d3.axisBottom(xScale));
+
+  const isAtlasAnnotation = selectedMetadataColumn.value.toLowerCase() === 'atlas_annotation';
+
+  if (isAtlasAnnotation) {
+    // Wrap each tick text in an SVG <a> element linking to nervosensus
+    xAxisGroup.selectAll(".tick").each(function () {
+      const tick = d3.select(this);
+      const textEl = tick.select("text");
+      const label = textEl.text();
+      const href = `https://nervosensus.netlify.app/?view=cards&atlasannotation=${label}`;
+
+      // Create an <a> wrapper inside the tick
+      const link = tick.append("a")
+        .attr("href", href)
+        .attr("target", "_blank");
+
+      // Move the text element into the link
+      link.node().appendChild(textEl.node());
+
+      textEl
+        .attr("transform", "rotate(-45)")
+        .style("text-anchor", "end")
+        .style("font-size", "12px")
+        .style("fill", "#667eea")
+        .style("cursor", "pointer");
+    });
+  } else {
+    xAxisGroup.selectAll("text")
+      .attr("transform", "rotate(-45)")
+      .style("text-anchor", "end")
+      .style("font-size", "12px");
+  }
 
   // Y axis
   g.append("g")
