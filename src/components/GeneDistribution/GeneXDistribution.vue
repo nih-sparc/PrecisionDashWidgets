@@ -5,25 +5,32 @@
       :gene="PrecisionVars.selectedGeneX ?? undefined"
       :metadataColumn="PrecisionVars.selectedMetadataColumn ?? undefined"
       @update:Vars="handleVarsUpdate"
-      data-path="https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2"
+      :data-path="resolvedDataPath"
     ></ViolinPlot>
   </div>
 </template>
 <script setup lang="ts">
-import { ref, unref, computed, watchEffect, onMounted } from "vue";
+import { unref, computed, onMounted } from "vue";
 import { usePrecisionStore } from "../../stores/precisionVars";
 import ViolinPlot from "../../libs/ViolinPlot/ViolinPlot.vue";
 import { useDashboardGlobalVars } from "../../useGlobalVars";
+
+const DEFAULT_DATA_PATH =
+  "https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2";
+
 defineOptions({
   inheritAttrs: false,
 });
 const props = defineProps<{
+  dataPath?: string;
   initialGene?: string;
   initialMetadataColumn?: string;
 }>();
 const globalVars = useDashboardGlobalVars();
 const PrecisionVars = usePrecisionStore();
-const urlSrc = computed(() => unref(globalVars!.s3Url));
+const resolvedDataPath = computed(
+  () => props.dataPath ?? (globalVars ? unref(globalVars.s3Url) : null) ?? DEFAULT_DATA_PATH
+);
 
 onMounted(() => {
   if (props.initialGene && PrecisionVars.selectedGeneX === null) {

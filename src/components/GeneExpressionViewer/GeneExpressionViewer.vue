@@ -5,25 +5,32 @@
       :gene1="PrecisionVars.selectedGene1 ?? undefined"
       :gene2="PrecisionVars.selectedGene2 ?? undefined"
       @update:Vars="PrecisionVars.setSelection"
-      data-path="https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2"
+      :data-path="resolvedDataPath"
     ></GeneCoexpressionViewer>
   </div>
 </template>
 <script setup lang="ts">
-import { ref, unref, computed, watchEffect, onMounted } from "vue";
+import { unref, computed, onMounted } from "vue";
 import { usePrecisionStore } from "../../stores/precisionVars";
 import GeneCoexpressionViewer from "../../libs/GeneExpressionViewer/GeneCoexpressionViewer.vue";
 import { useDashboardGlobalVars } from "../../useGlobalVars";
+
+const DEFAULT_DATA_PATH =
+  "https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2";
+
 defineOptions({
   inheritAttrs: false,
 });
 const props = defineProps<{
+  dataPath?: string;
   initialGene1?: string;
   initialGene2?: string;
 }>();
 const globalVars = useDashboardGlobalVars();
 const PrecisionVars = usePrecisionStore();
-const urlSrc = computed(() => unref(globalVars!.s3Url));
+const resolvedDataPath = computed(
+  () => props.dataPath ?? (globalVars ? unref(globalVars.s3Url) : null) ?? DEFAULT_DATA_PATH
+);
 
 onMounted(() => {
   if (props.initialGene1 && PrecisionVars.selectedGene1 === null) {
