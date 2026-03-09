@@ -390,11 +390,36 @@ function drawPlot({ rows, xLevels, yLevels }) {
     .attr("transform", `translate(0,${innerHeight})`)
     .call(d3.axisBottom(xScale));
 
-  xAxisGroup
-    .selectAll("text")
-    .attr("transform", "rotate(-45)")
-    .style("text-anchor", "end")
-    .style("font-size", "12px");
+  const isAtlasAnnotation = xCol.value.toLowerCase() === 'atlas_annotation';
+
+  if (isAtlasAnnotation) {
+    // Wrap each tick text in an SVG <a> element linking to nervosensus
+    xAxisGroup.selectAll(".tick").each(function () {
+      const tick = d3.select(this);
+      const textEl = tick.select("text");
+      const label = textEl.text();
+      const href = `https://nervosensus.netlify.app/?view=cards&atlasannotation=${label}`;
+
+      const link = tick.append("a")
+        .attr("href", href)
+        .attr("target", "_blank");
+
+      link.node().appendChild(textEl.node());
+
+      textEl
+        .attr("transform", "rotate(-45)")
+        .style("text-anchor", "end")
+        .style("font-size", "12px")
+        .style("fill", "#667eea")
+        .style("cursor", "pointer");
+    });
+  } else {
+    xAxisGroup
+      .selectAll("text")
+      .attr("transform", "rotate(-45)")
+      .style("text-anchor", "end")
+      .style("font-size", "12px");
+  }
 
   // Y axis
   g.append("g")
