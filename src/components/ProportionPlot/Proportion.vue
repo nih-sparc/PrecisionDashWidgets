@@ -1,36 +1,45 @@
-<template>                 
-    <slot></slot>
-    <div class="proportion-plot-wrap">
-        <ProportionPlot :srcUrl="urlSrc" ></ProportionPlot>
-    </div>
+<template>
+  <slot></slot>
+  <div class="proportion-plot-wrap">
+    <ProportionPlot
+      :data-path="resolvedDataPath"
+      @update:Vars="PrecisionVars.setSelection"
+    />
+  </div>
 </template>
 <script setup lang="ts">
+import { unref, computed } from "vue";
+import { usePrecisionStore } from "../../stores/precisionVars";
+import ProportionPlot from "../../libs/ProportionPlot/ProportionPlot.vue";
+import { useDashboardGlobalVars } from "../../useGlobalVars";
 
-import { ref, unref, computed, watchEffect } from 'vue';
-import { ElTooltip } from "element-plus";
-import { InfoFilled } from "@element-plus/icons-vue";
-import { ProportionPlot} from "pennsieve-visualization"
-import { useDashboardGlobalVars } from '../../useGlobalVars'
+const DEFAULT_DATA_PATH =
+  "https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2";
+
 defineOptions({
-    inheritAttrs: false
-})
-const globalVars = useDashboardGlobalVars() 
-const urlSrc = computed(() => unref(globalVars!.s3Url))
+  inheritAttrs: false,
+});
 
+const props = defineProps<{
+  dataPath?: string;
+}>();
+
+const globalVars = useDashboardGlobalVars();
+const PrecisionVars = usePrecisionStore();
+const resolvedDataPath = computed(
+  () =>
+    props.dataPath ??
+    (globalVars ? unref(globalVars.s3Url) : null) ??
+    DEFAULT_DATA_PATH
+);
 </script>
 <style scoped lang="scss">
-.proportion-plot-wrap{
+.proportion-plot-wrap {
   width: 100%;
-  height: 100%;      
-  margin: 0 10px;
+  height: 100%;
+  padding: 20px;
+  background: white;
+  box-sizing: border-box;
   overflow: hidden;
 }
-:deep(.dashboard-header h1){ display: none;}
-:deep(.pp-container){height: 100%;}
-//set to vars when you figure out how to get them from the dashboard.
-:deep(.pp-btn--primary){
-    // background: #4f46e5; 
-    // border-color: #4f46e5; 
-}
-
 </style>

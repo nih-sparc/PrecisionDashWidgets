@@ -6,11 +6,13 @@ import {
   GeneExpression,
   SideBySide,
   GeneXDistribution,
+  ProportionPlot,
 } from "./components/index";
 
 const RawGeneExpression = markRaw(GeneExpression);
 const RawSideBySide = markRaw(SideBySide);
 const RawGeneXDistribution = markRaw(GeneXDistribution);
+const RawProportionPlot = markRaw(ProportionPlot);
 //import ViolinPlot from "./libs/ViolinPlot/ViolinPlot.vue";
 
 //name = component key
@@ -18,9 +20,11 @@ const availableWidgets = [
   { name: "GeneExpression", component: RawGeneExpression },
   { name: "SideBySide", component: RawSideBySide },
   { name: "GeneXDistribution", component: RawGeneXDistribution },
+  { name: "ProportionPlot", component: RawProportionPlot },
 ];
 const services = {
   ApiUrl: "https://api.pennsieve.net",
+  s3Url: "https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2",
 };
 // Define layouts for each dashboard
 const geneCoexpressionDash = {
@@ -84,11 +88,32 @@ const GeneXDistributionDash = {
   hideEditGrid: true,
   hideHeader: true,
 };
+const proportionPlotDash = {
+  defaultLayout: [
+    {
+      id: "ProportionPlot-1",
+      x: 0,
+      y: 0,
+      w: 12,
+      h: 11,
+      componentKey: "ProportionPlot",
+      componentName: "Proportion Plot",
+      component: RawProportionPlot,
+      Props: {},
+    },
+  ],
+  availableWidgets,
+  services,
+  name: "Proportion Plot",
+  hideEditGrid: true,
+  hideHeader: true,
+};
 // Reactive dashboard options
 const dashboardOptions = ref([
   geneCoexpressionDash,
   geneCellComparisonDash,
   GeneXDistributionDash,
+  proportionPlotDash,
 ]);
 </script>
 

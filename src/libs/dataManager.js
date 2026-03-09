@@ -1,5 +1,15 @@
 import * as duckdb from "@duckdb/duckdb-wasm";
 
+// Metadata columns to exclude from all downstream components (lowercase)
+const EXCLUDED_COLUMNS = new Set(["donor_id"]);
+
+function stripExcluded(obj) {
+  for (const key of Object.keys(obj)) {
+    if (EXCLUDED_COLUMNS.has(key.toLowerCase())) delete obj[key];
+  }
+  return obj;
+}
+
 export class UMAPGeneViewer {
   constructor(basePath = "/data") {
     this.basePath = basePath;
@@ -144,8 +154,7 @@ export class UMAPGeneViewer {
 
     this.umapData = umapArray.map((umapRow) => {
       const metadata = cellMetadata.get(umapRow.cell_id) || {};
-      const merged = { ...umapRow, ...metadata };
-      return merged;
+      return stripExcluded({ ...umapRow, ...metadata });
     });
 
     // Try to query tSNE data and merge with metadata
@@ -154,7 +163,7 @@ export class UMAPGeneViewer {
       this.tsneData = tsneResult.toArray().map((row) => {
         const tsneRow = row.toJSON();
         const metadata = cellMetadata.get(tsneRow.cell_id) || {};
-        return { ...tsneRow, ...metadata };
+        return stripExcluded({ ...tsneRow, ...metadata });
       });
     } catch {
       console.log("tSNE data not available");
@@ -228,7 +237,7 @@ export class UMAPGeneViewer {
             `);
         const rows = result.toArray();
         if (rows.length > 0) {
-          return rows[0].toJSON();
+          return stripExcluded(rows[0].toJSON());
         }
       } catch (e) {
         const result = await this.conn.query(`
@@ -236,7 +245,7 @@ export class UMAPGeneViewer {
             `);
         const rows = result.toArray();
         if (rows.length > 0) {
-          return rows[0].toJSON();
+          return stripExcluded(rows[0].toJSON());
         }
       }
 
