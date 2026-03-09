@@ -10,5 +10,4 @@ export {
   useDashboardGlobalVars,
   DASHBOARD_GLOBAL_VARS_KEY,
 } from "../useGlobalVars";
-import "pennsieve-visualization/style.css";
 import "@pennsieve-viz/core/style.css";

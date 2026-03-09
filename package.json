@@ -1,7 +1,7 @@
 {
   "name": "precision-dashwidgets",
   "private": false,
-  "version": "0.5.2",
+  "version": "0.5.4",
   "main": "./dist/precision-dashwidgets.umd.js",
   "module": "./dist/precision-dashwidgets.es.js",
   "style": "dist/style.css",
@@ -28,7 +28,6 @@
     "@pennsieve-viz/core": "0.1.6",
     "chart.js": "^4.5.1",
     "d3": "^7.9.0",
-    "pennsieve-visualization": "^0.4.8",
     "regl": "^2.1.1",
     "vue": "^3.5.18"
   },
