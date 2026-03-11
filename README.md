@@ -2,6 +2,72 @@
 
 Interactive genomics visualization widgets built with Vue 3. These components provide gene expression analysis, dimensionality reduction plots (UMAP/tSNE), and distribution visualizations powered by DuckDB WASM for client-side querying of Parquet data files.
 
+## Getting Started
+
+### Prerequisites
+
+- **Node.js** >= 18
+- **npm** >= 9
+
+### Clone and Run
+
+```bash
+# Clone the repo
+git clone https://github.com/nih-sparc/DashboardRepo.git
+cd DashboardRepo/packages/PrecisionDashWidgets
+
+# Install dependencies
+npm install
+
+# Start the dev server (opens at http://localhost:5173)
+npm run dev
+```
+
+The dev server loads `src/App.vue`, which renders a `MultiDashboard` with all the widgets wired up against sample data. This is the fastest way to see everything in action.
+
+### Build the Library
+
+```bash
+# Build for distribution (outputs to dist/)
+npm run build
+
+# Preview the built package
+npm run preview
+```
+
+The build produces two bundles in `dist/`:
+- `precision-dashwidgets.es.js` (ESM)
+- `precision-dashwidgets.umd.js` (UMD)
+- `style.css` (combined styles)
+
+---
+
+## Architecture
+
+### Libs vs Components
+
+The codebase uses a **two-layer architecture** under `src/`:
+
+- **`src/components/`** — Lightweight **wrapper components** that form the public API. Each wrapper handles prop injection (e.g. `dataPath`, `initialGene1`), connects to the shared Pinia store, resolves the data URL via `useDashboardGlobalVars()`, and delegates all rendering to a corresponding lib component. These are what consumers import.
+
+- **`src/libs/`** — The **implementation layer** where the actual visualization logic lives. Lib components own DuckDB initialization, WebGL/D3 rendering, user interaction handling, and local state. For example, `components/GeneExpressionViewer/` wraps `libs/GeneExpressionViewer/GeneCoexpressionViewer.vue`.
+
+This split keeps the public-facing component API clean and dashboard-aware, while the libs remain self-contained and reusable.
+
+### DuckDB and dataManager.js
+
+All data access goes through `src/libs/dataManager.js`, which exports the `UMAPGeneViewer` class. When a component mounts, it creates a `UMAPGeneViewer` instance pointed at a base URL (S3, HTTP, etc.) containing Parquet files. The class initializes a **DuckDB WASM** worker in-browser, fetches the Parquet files as binary buffers, registers them in DuckDB, and then runs SQL queries entirely client-side — no backend needed.
+
+Key operations include loading UMAP/tSNE coordinates, searching genes via full-text SQL queries against `gene_stats.parquet`, and loading individual gene expression data on-demand from chunked Parquet files referenced in `gene_locations.parquet`. Results are cached in memory so repeated gene lookups are instant.
+
+Each component currently creates its own `UMAPGeneViewer` / DuckDB instance. See [Known Limitations](#known-limitations) and the [Roadmap](#roadmap-configurable-data-schema) for planned shared-instance support.
+
+### Shared State
+
+Cross-widget coordination (e.g. selecting a gene in one widget updates another) is handled by a **Pinia store** (`usePrecisionStore`). Dashboard-level context like the data URL and filters flows through Vue's `provide`/`inject` via `DASHBOARD_GLOBAL_VARS_KEY`.
+
+---
+
 ## Components
 
 ### GeneExpression
@@ -389,19 +455,6 @@ const dataProvider = createDataProvider({
 
 provide('precision:data', dataProvider)
 </script>
-```
-
-## Development
-
-```bash
-# Start dev server
-npm run dev
-
-# Build library
-npm run build
-
-# Preview build
-npm run preview
 ```
 
 ## Tech Stack
