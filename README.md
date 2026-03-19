@@ -1,5 +1,14 @@
 # precision-dashwidgets
 
+## Version Compatibility
+
+| PrecisionDashWidgets | PennsieveDashboard | Notes |
+|----------------------|--------------------|-------|
+| >= 1.0.0             | >= 1.0.0           | `s3Url`/`apiUrl` removed — use `services` instead |
+| < 1.0.0              | < 1.0.0            | Legacy `s3Url`/`apiUrl` on `GlobalVarsShape` |
+
+---
+
 Interactive genomics visualization widgets built with Vue 3. These components provide gene expression analysis, dimensionality reduction plots (UMAP/tSNE), and distribution visualizations powered by DuckDB WASM for client-side querying of Parquet data files.
 
 ## Getting Started
