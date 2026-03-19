@@ -22,7 +22,7 @@ defineOptions({
 })
 const globalVars = useDashboardGlobalVars() 
 const widgetName = ref('Data Explorer');
-const urlSrc = computed(() => unref(globalVars!.s3Url))
+const urlSrc = computed(() => unref(globalVars?.services)?.s3Url)
 
 
 // Write:

@@ -76,7 +76,7 @@ Gene co-expression analysis widget. Renders a scatter plot (UMAP or tSNE) colore
 
 | Prop | Type | Description |
 |------|------|-------------|
-| `dataPath` | `string?` | URL to data directory containing Parquet files. Falls back to injected `s3Url`, then the default. |
+| `dataPath` | `string?` | URL to data directory containing Parquet files. Falls back to injected `services.s3Url`, then the default. |
 | `initialGene1` | `string?` | Pre-selected first gene (e.g. `"CDH9"`) |
 | `initialGene2` | `string?` | Pre-selected second gene (e.g. `"TAC1"`) |
 
@@ -86,7 +86,7 @@ Dual-panel comparison widget. Left panel shows a UMAP colored by a selected meta
 
 | Prop | Type | Description |
 |------|------|-------------|
-| `dataPath` | `string?` | URL to data directory containing Parquet files. Falls back to injected `s3Url`, then the default. |
+| `dataPath` | `string?` | URL to data directory containing Parquet files. Falls back to injected `services.s3Url`, then the default. |
 | `initialGene` | `string?` | Pre-selected gene for the expression panel |
 | `initialMetadataColumn` | `string?` | Pre-selected metadata column for the metadata panel |
 
@@ -96,7 +96,7 @@ Gene expression distribution widget. Renders violin or box plots showing the dis
 
 | Prop | Type | Description |
 |------|------|-------------|
-| `dataPath` | `string?` | URL to data directory containing Parquet files. Falls back to injected `s3Url`, then the default. |
+| `dataPath` | `string?` | URL to data directory containing Parquet files. Falls back to injected `services.s3Url`, then the default. |
 | `initialGene` | `string?` | Pre-selected gene |
 | `initialMetadataColumn` | `string?` | Pre-selected metadata column for x-axis grouping |
 
@@ -193,7 +193,7 @@ const defaultLayout = [
 
 The dashboard provides two context mechanisms:
 
-1. **Global vars injection** (`DASHBOARD_GLOBAL_VARS_KEY`) - provides `s3Url`, `apiUrl`, and shared filters via `provide`/`inject`.
+1. **Global vars injection** (`DASHBOARD_GLOBAL_VARS_KEY`) - provides `services` (configurables like data URLs, API keys) and shared `filters` via `provide`/`inject`.
 2. **Pinia store** (`usePrecisionStore`) - shared reactive state for gene and metadata selections across all widgets. When a user selects a gene in one widget, other widgets can react.
 
 These are wired automatically when used inside the dashboard framework.
@@ -284,7 +284,7 @@ import {
 
 #### Alternative: Provide Global Vars (set data path once)
 
-Instead of passing `dataPath` to every component, you can provide `DASHBOARD_GLOBAL_VARS_KEY` in an ancestor component. All widgets will inherit the `s3Url` from it:
+Instead of passing `dataPath` to every component, you can provide `DASHBOARD_GLOBAL_VARS_KEY` in an ancestor component. All widgets will inherit `services.s3Url` from it:
 
 ```vue
 <script setup>
@@ -292,8 +292,7 @@ import { provide, ref } from 'vue'
 import { DASHBOARD_GLOBAL_VARS_KEY } from 'precision-dashwidgets'
 
 provide(DASHBOARD_GLOBAL_VARS_KEY, {
-  s3Url: ref('https://your-bucket.s3.amazonaws.com/your-dataset'),
-  apiUrl: ref(''),
+  services: ref({ s3Url: 'https://your-bucket.s3.amazonaws.com/your-dataset' }),
   filters: ref({}),
   setFilter: () => {},
   clearFilter: () => {},
@@ -301,7 +300,7 @@ provide(DASHBOARD_GLOBAL_VARS_KEY, {
 </script>
 ```
 
-**Resolution order:** `dataPath` prop > injected `s3Url` > built-in default URL.
+**Resolution order:** `dataPath` prop > injected `services.s3Url` > built-in default URL.
 
 ### Accessing Shared State
 

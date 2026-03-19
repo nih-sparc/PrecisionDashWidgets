@@ -5,11 +5,12 @@ export const DASHBOARD_GLOBAL_VARS_KEY = 'dashboard:globalVars' as const
 export type FilterValue = string | number | boolean | null | string[] | number[]
 export type Filters = Record<string, FilterValue>
 
+export type Services = Record<string, any>
+
 export type GlobalVarsShape = {
-  s3Url: string | import('vue').Ref<string>
-  apiUrl: string | import('vue').Ref<string>
-  filters: Filters | import('vue').Ref<Filters>          // reactive bag
-  setFilter: (key: string, value: FilterValue) => void   // mutate
+  services: Services | import('vue').Ref<Services>
+  filters: Filters | import('vue').Ref<Filters>
+  setFilter: (key: string, value: FilterValue, isDisplayed?: boolean) => void
   clearFilter: (key: string) => void
   resetFilters?: (next?: Filters) => void
 }

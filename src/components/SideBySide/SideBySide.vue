@@ -29,7 +29,7 @@ const props = defineProps<{
 const globalVars = useDashboardGlobalVars();
 const PrecisionVars = usePrecisionStore();
 const resolvedDataPath = computed(
-  () => props.dataPath ?? (globalVars ? unref(globalVars.s3Url) : null) ?? DEFAULT_DATA_PATH
+  () => props.dataPath ?? (globalVars ? unref(globalVars.services)?.s3Url : null) ?? DEFAULT_DATA_PATH
 );
 
 onMounted(() => {

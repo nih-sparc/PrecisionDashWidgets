@@ -29,7 +29,7 @@ const PrecisionVars = usePrecisionStore();
 const resolvedDataPath = computed(
   () =>
     props.dataPath ??
-    (globalVars ? unref(globalVars.s3Url) : null) ??
+    (globalVars ? unref(globalVars.services)?.s3Url : null) ??
     DEFAULT_DATA_PATH
 );
 </script>
