@@ -2,10 +2,14 @@
 
 ## Version Compatibility
 
-| PrecisionDashWidgets | PennsieveDashboard | Notes |
-|----------------------|--------------------|-------|
-| >= 1.0.0             | >= 1.0.0           | `s3Url`/`apiUrl` removed — use `services` instead |
-| < 1.0.0              | < 1.0.0            | Legacy `s3Url`/`apiUrl` on `GlobalVarsShape` |
+| PrecisionDashWidgets | PennsieveDashboard | SparcDashWidgets | Notes |
+|----------------------|--------------------|------------------|-------|
+| >= 1.0.0             | >= 1.0.0           | >= 1.0.0         | `s3Url`/`apiUrl` removed — use `services` instead |
+| < 1.0.0              | < 1.0.0            | < 1.0.0          | Legacy `s3Url`/`apiUrl` on `GlobalVarsShape` |
+
+Pre-1.0 versions of these packages are not compatible with 1.0+. If you are using SparcDashWidgets or PrecisionDashWidgets, all three packages must be on the same side of the 1.0 boundary.
+
+For full documentation on embedding widgets and building custom widget libraries, see the [PennsieveDashboard README](https://github.com/Pennsieve/PennsieveDashboard#readme).
 
 ---
 
