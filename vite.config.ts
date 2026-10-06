@@ -10,6 +10,30 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  server: {
+    proxy: {
+      "/api2": {
+        target: "https://api2.pennsieve.io",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api2/, ""),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.removeHeader("cookie");
+          });
+        },
+      },
+      "/assets-proxy": {
+        target: "https://assets.pennsieve.io",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/assets-proxy/, ""),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.removeHeader("cookie");
+          });
+        },
+      },
+    },
+  },
   build: {
     cssCodeSplit: false,
     copyPublicDir: false,
