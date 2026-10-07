@@ -21,6 +21,14 @@ export class UMAPGeneViewer {
     this.loadedChunks = new Set();
   }
 
+  _buildUrl(filename) {
+    const qIndex = this.basePath.indexOf('?');
+    if (qIndex === -1) return `${this.basePath}/${filename}`;
+    const base = this.basePath.substring(0, qIndex);
+    const qs = this.basePath.substring(qIndex);
+    return `${base}/${filename}${qs}`;
+  }
+
   async initialize() {
     try {
       // Get DuckDB bundles
@@ -53,37 +61,37 @@ export class UMAPGeneViewer {
     const filesToLoad = [
       {
         name: "umap.parquet",
-        path: `${this.basePath}/umap_complete.parquet`,
+        path: this._buildUrl("umap_complete.parquet"),
         required: true,
       },
       {
         name: "tsne.parquet",
-        path: `${this.basePath}/tsne_complete.parquet`,
+        path: this._buildUrl("tsne_complete.parquet"),
         required: false,
       },
       {
         name: "gene_locations.parquet",
-        path: `${this.basePath}/gene_locations.parquet`,
+        path: this._buildUrl("gene_locations.parquet"),
         required: true,
       },
       {
         name: "gene_stats.parquet",
-        path: `${this.basePath}/gene_stats.parquet`,
+        path: this._buildUrl("gene_stats.parquet"),
         required: true,
       },
       {
         name: "cells.parquet",
-        path: `${this.basePath}/cells.parquet`,
+        path: this._buildUrl("cells.parquet"),
         required: true,
       },
       {
         name: "metadata.parquet",
-        path: `${this.basePath}/metadata.parquet`,
+        path: this._buildUrl("metadata.parquet"),
         required: false,
       },
       {
         name: "genes.parquet",
-        path: `${this.basePath}/genes.parquet`,
+        path: this._buildUrl("genes.parquet"),
         required: true,
       },
     ];
@@ -298,7 +306,7 @@ export class UMAPGeneViewer {
 
       if (isPrecomputed) {
         // Load individual gene file (fast!)
-        const response = await fetch(`${this.basePath}/${location}`);
+        const response = await fetch(this._buildUrl(location));
         if (!response.ok) {
           throw new Error(`Failed to load gene file: ${response.statusText}`);
         }
@@ -322,7 +330,7 @@ export class UMAPGeneViewer {
 
         // Check if chunk already loaded
         if (!this.loadedChunks.has(chunkFileName)) {
-          const response = await fetch(`${this.basePath}/${location}`);
+          const response = await fetch(this._buildUrl(location));
           if (!response.ok) {
             throw new Error(
               `Failed to load chunk file: ${response.statusText}`

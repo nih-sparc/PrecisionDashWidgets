@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, markRaw } from "vue";
+import { ref, reactive, watch, markRaw } from "vue";
 
 import { MultiDashboard } from "../../PennsieveDashboard/src/components/index";
 import {
@@ -8,12 +8,54 @@ import {
   GeneXDistribution,
   ProportionPlot,
 } from "./components/index";
+import { useViewerAssets } from "./composables/useViewerAssets.js";
 
 const RawGeneExpression = markRaw(GeneExpression);
 const RawSideBySide = markRaw(SideBySide);
 const RawGeneXDistribution = markRaw(GeneXDistribution);
 const RawProportionPlot = markRaw(ProportionPlot);
-//import ViolinPlot from "./libs/ViolinPlot/ViolinPlot.vue";
+
+// --- Pennsieve config (hardcoded for now) ---
+const API2_URL = "/api2";
+const TOKEN = "YOUR_API_TOKEN_HERE";
+
+const DATASETS = [
+  {
+    id: "parquet-passthrough",
+    label: "Human DRG (Parquet)",
+    datasetId: "N:dataset:e406826e-1e0c-42e3-b88a-73bb175924b0",
+    packageId: "N:package:576bee78-58de-4b56-8da4-101c6b97ed61",
+  },
+  {
+    id: "seurat-package",
+    label: "Human DRG (Seurat Processed)",
+    datasetId: "N:dataset:e406826e-1e0c-42e3-b88a-73bb175924b0",
+    packageId: "N:package:0a61d57f-38fd-4db8-b8ce-ba42266e0380",
+  },
+];
+
+// --- Viewer assets composable ---
+const {
+  selectedDatasetId,
+  dataUrl,
+  loading,
+  error,
+  datasets,
+} = useViewerAssets({
+  api2Url: API2_URL,
+  token: TOKEN,
+  datasets: DATASETS,
+});
+
+// --- Services (reactive so widgets pick up URL changes) ---
+const services = reactive({
+  ApiUrl: "https://api.pennsieve.net",
+  s3Url: null as string | null,
+});
+
+watch(dataUrl, (url) => {
+  services.s3Url = url;
+});
 
 //name = component key
 const availableWidgets = [
@@ -22,10 +64,6 @@ const availableWidgets = [
   { name: "GeneXDistribution", component: RawGeneXDistribution },
   { name: "ProportionPlot", component: RawProportionPlot },
 ];
-const services = {
-  ApiUrl: "https://api.pennsieve.net",
-  s3Url: "https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2",
-};
 // Define layouts for each dashboard
 const geneCoexpressionDash = {
   defaultLayout: [
@@ -118,14 +156,23 @@ const dashboardOptions = ref([
 </script>
 
 <template>
+  <!-- Dataset Selector -->
+  <div class="dataset-selector">
+    <label for="dataset-select">Dataset: </label>
+    <select id="dataset-select" v-model="selectedDatasetId" :disabled="loading">
+      <option :value="null" disabled>Select a dataset…</option>
+      <option v-for="ds in datasets" :key="ds.id" :value="ds.id">
+        {{ ds.label }}
+      </option>
+    </select>
+    <span v-if="loading" class="status-indicator">Loading…</span>
+    <span v-if="error" class="status-indicator error">{{ error }}</span>
+  </div>
 
   <!-- Dashboard Content -->
-
-  <!-- <ViolinPlot
-      style="height: 500px"
-      data-path="https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2"
-    ></ViolinPlot> -->
   <MultiDashboard
+    v-if="dataUrl"
+    :key="selectedDatasetId"
     class="dashboard-app"
     :dashboardOptions="dashboardOptions"
     :default="geneCoexpressionDash"
@@ -135,6 +182,29 @@ const dashboardOptions = ref([
 </template>
 
 <style scoped>
+.dataset-selector {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: sans-serif;
+  font-size: 14px;
+}
+
+.dataset-selector select {
+  padding: 4px 8px;
+  font-size: 14px;
+}
+
+.status-indicator {
+  font-size: 13px;
+  color: #666;
+}
+
+.status-indicator.error {
+  color: #c00;
+}
+
 .dashboard-app {
   width: 100%;
   height: 100%;
