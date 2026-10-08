@@ -82,9 +82,9 @@
                   >
                 </div>
                 <a
-                  v-if="selectedMetadataColumn.toLowerCase() === 'atlas_annotation'"
+                  v-if="getExternalLinkUrl(selectedMetadataColumn, item.label)"
                   class="legend-label legend-link"
-                  :href="`https://nervosensus.netlify.app/?view=cards&atlasannotation=${item.label}`"
+                  :href="getExternalLinkUrl(selectedMetadataColumn, item.label)"
                   target="_blank"
                   rel="noopener noreferrer"
                 >{{ item.label }}</a>
@@ -179,6 +179,7 @@
 <script setup>
 import {
   ref,
+  shallowRef,
   computed,
   onMounted,
   onBeforeUnmount,
@@ -187,16 +188,27 @@ import {
 } from "vue";
 import * as d3 from "d3";
 import createRegl from "regl";
-import { UMAPGeneViewer } from "../dataManager";
+import { useDataEngine, useDatasetActiveConfig } from "../../composables/useSharedDataEngine.js";
+import { getMetadataColumns, getExternalLink } from "../../config/datasetConfig.js";
 
 // Props
 const props = defineProps({
   dataPath: { type: String, default: "/data" },
   metadataColumn: { type: String, default: null },
   gene: { type: String, default: null },
+  config: { type: Object, default: null },
 });
 //EMITS
 const emit = defineEmits(["update:Vars"]);
+
+// Shared data engine + config (injected from ancestor)
+const { viewer: sharedViewer, loading: engineLoading, error: engineError } = useDataEngine();
+const injectedConfig = useDatasetActiveConfig();
+const activeConfig = computed(() => props.config || injectedConfig.value || {});
+
+function getExternalLinkUrl(columnName, value) {
+  return getExternalLink(activeConfig.value, columnName, value);
+}
 // Refs
 const leftCanvas = ref(null);
 const rightCanvas = ref(null);
@@ -206,8 +218,8 @@ const rightRegl = ref(null);
 const sharedZoom = ref(d3.zoomIdentity); // Unified zoom state
 const leftResizeObserver = ref(null);
 const rightResizeObserver = ref(null);
-const leftPointsData = ref([]);
-const rightPointsData = ref([]);
+const leftPointsData = shallowRef([]);
+const rightPointsData = shallowRef([]);
 const hoveredCellId = ref(null); // Shared hover state by cell_id
 const hoveredFromLeft = ref(true); // Track which panel triggered the hover
 const leftTooltipPos = ref({ x: 0, y: 0 });
@@ -217,7 +229,7 @@ const isLegendAnimating = ref(false);
 // State
 const loading = ref(true);
 const error = ref(null);
-const umapData = ref([]);
+const umapData = shallowRef([]);
 
 // Left panel (metadata)
 const metadataColumns = ref([]);
@@ -365,33 +377,29 @@ const hoveredPoint = computed(() => {
   return point;
 });
 
-// Initialize
-onMounted(async () => {
+// Initialize using shared viewer (injected) or fallback to creating own
+async function initWithViewer(viewerInstance) {
   try {
-    manager.value = new UMAPGeneViewer(props.dataPath);
-    await manager.value.initialize();
+    manager.value = viewerInstance;
 
     const data = await manager.value.getReductionData("umap");
     umapData.value = data;
 
-    // Extract metadata columns
+    // Extract metadata columns using config
     if (data.length > 0) {
       const sample = data[0];
-      const cols = Object.keys(sample).filter(
-        (key) =>
-          !["cell_id", "umap_1", "umap_2", "tsne_1", "tsne_2"].includes(key)
-      );
+      const cfg = activeConfig.value;
+      const cols = getMetadataColumns(sample, cfg, cfg);
       metadataColumns.value = cols;
 
       if (cols.length > 0) {
-        // Use prop if provided, otherwise default logic
+        // Use prop if provided, otherwise config default, otherwise first column
         if (props.metadataColumn && cols.includes(props.metadataColumn)) {
           selectedMetadataColumn.value = props.metadataColumn;
         } else if (!selectedMetadataColumn.value) {
-          // Default to Atlas_annotations if available
-          selectedMetadataColumn.value = cols.includes("Atlas_annotation")
-            ? "Atlas_annotation"
-            : cols[0];
+          const defaultCol = cfg?.defaultColorBy;
+          selectedMetadataColumn.value =
+            defaultCol && cols.includes(defaultCol) ? defaultCol : cols[0];
         }
       }
     }
@@ -414,6 +422,27 @@ onMounted(async () => {
     console.error("Failed to initialize:", err);
     error.value = `Failed to load data: ${err.message}`;
     loading.value = false;
+  }
+}
+
+onMounted(async () => {
+  // Use shared viewer if available, otherwise create own
+  if (sharedViewer.value) {
+    await initWithViewer(sharedViewer.value);
+  } else if (!engineLoading.value) {
+    // Fallback: create own viewer (standalone mode)
+    const { UMAPGeneViewer } = await import("../dataManager.js");
+    const v = new UMAPGeneViewer(props.dataPath);
+    await v.initialize();
+    await initWithViewer(v);
+  } else {
+    // Engine is still loading, watch for it
+    const unwatch = watch(sharedViewer, async (v) => {
+      if (v) {
+        unwatch();
+        await initWithViewer(v);
+      }
+    });
   }
 });
 
@@ -1029,8 +1058,7 @@ async function renderMetadataUMAP() {
   d3.select(canvas).call(zoom);
 
   // Track event listeners for cleanup
-  let lastMouseMoveTime = 0;
-  const MOUSE_MOVE_THROTTLE = 16; // ~60fps
+  let hoverRafId = null;
 
   const wheelHandler = (event) => {
     event.preventDefault();
@@ -1070,70 +1098,62 @@ async function renderMetadataUMAP() {
   };
 
   const mouseMoveHandler = (event) => {
-    // Throttle mouse move events
-    const now = Date.now();
-    if (now - lastMouseMoveTime < MOUSE_MOVE_THROTTLE) return;
-    lastMouseMoveTime = now;
+    if (hoverRafId) return;
+    hoverRafId = requestAnimationFrame(() => {
+      hoverRafId = null;
+      const r = canvas.getBoundingClientRect();
+      const mx = event.clientX - r.left;
+      const my = event.clientY - r.top;
+      const tr = sharedZoom.value || d3.zoomIdentity;
 
-    const r = canvas.getBoundingClientRect();
-    const mx = event.clientX - r.left;
-    const my = event.clientY - r.top;
-    const tr = sharedZoom.value || d3.zoomIdentity;
+      const ndcX = (mx / canvas.width) * 2 - 1;
+      const ndcY = -((my / canvas.height) * 2 - 1);
 
-    const ndcX = (mx / canvas.width) * 2 - 1;
-    const ndcY = -((my / canvas.height) * 2 - 1);
+      const hoverRadiusSq = 0.02 * 0.02;
+      let closestPoint = null;
+      let closestDist = hoverRadiusSq;
+      let closestIndex = -1;
 
-    const hoverRadius = 0.02;
-    let closestPoint = null;
-    let closestDist = hoverRadius;
-    let closestIndex = -1;
-
-    leftPointsData.value.forEach((p, i) => {
-      const px = xScale(p.x);
-      const py = yScale(p.y);
-
+      const points = leftPointsData.value;
       const tX = (2 * tr.x) / canvas.width;
       const tY = -(2 * tr.y) / canvas.height;
-      const tx = px * tr.k + tX;
-      const ty = py * tr.k + tY;
+      for (let i = 0, len = points.length; i < len; i++) {
+        const p = points[i];
+        const tx = xScale(p.x) * tr.k + tX;
+        const ty = yScale(p.y) * tr.k + tY;
+        const dx = tx - ndcX;
+        const dy = ty - ndcY;
+        const dist = dx * dx + dy * dy;
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestPoint = p;
+          closestIndex = i;
+        }
+      }
 
-      const dx = tx - ndcX;
-      const dy = ty - ndcY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (closestPoint) {
+        hoveredCellId.value = closestPoint.cell_id;
+        hoveredFromLeft.value = true;
 
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestPoint = p;
-        closestIndex = i;
+        const px = xScale(closestPoint.x);
+        const py = yScale(closestPoint.y);
+        const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
+        const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
+
+        const canvasRect = canvas.getBoundingClientRect();
+        leftTooltipPos.value = {
+          x: canvasRect.left + screenX + 15,
+          y: canvasRect.top + screenY - 10,
+        };
+      } else {
+        hoveredCellId.value = null;
+      }
+
+      renderLeftPanel();
+      if (rightRegl.value && selectedGene.value) {
+        renderRightPanel();
       }
     });
-
-    if (closestPoint) {
-      hoveredCellId.value = closestPoint.cell_id;
-      hoveredFromLeft.value = true;
-
-      // Calculate tooltip position based on point location on canvas
-      const px = xScale(closestPoint.x);
-      const py = yScale(closestPoint.y);
-      const tX = (2 * tr.x) / canvas.width;
-      const tY = -(2 * tr.y) / canvas.height;
-      const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
-      const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
-
-      const canvasRect = canvas.getBoundingClientRect();
-      leftTooltipPos.value = {
-        x: canvasRect.left + screenX + 15,
-        y: canvasRect.top + screenY - 10,
-      };
-    } else {
-      hoveredCellId.value = null;
-    }
-
-    // Single coordinated render
-    renderLeftPanel();
-    if (rightRegl.value && selectedGene.value) {
-      renderRightPanel();
-    }
   };
 
   const mouseLeaveHandler = () => {
@@ -1607,8 +1627,7 @@ async function renderGeneUMAP() {
     // After d3.select(canvas).call(zoom);
 
     // Track event listeners for cleanup
-    let lastMouseMoveTime = 0;
-    const MOUSE_MOVE_THROTTLE = 16; // ~60fps
+    let rightHoverRafId = null;
 
     const wheelHandler = (event) => {
       event.preventDefault();
@@ -1648,67 +1667,51 @@ async function renderGeneUMAP() {
     };
 
     const mouseMoveHandler = (event) => {
-      // Throttle mouse move events
-      const now = Date.now();
-      if (now - lastMouseMoveTime < MOUSE_MOVE_THROTTLE) return;
-      lastMouseMoveTime = now;
+      if (rightHoverRafId) return;
+      rightHoverRafId = requestAnimationFrame(() => {
+        rightHoverRafId = null;
+        const r = canvas.getBoundingClientRect();
+        const mx = event.clientX - r.left;
+        const my = event.clientY - r.top;
+        const tr = sharedZoom.value || d3.zoomIdentity;
 
-      const r = canvas.getBoundingClientRect();
-      const mx = event.clientX - r.left;
-      const my = event.clientY - r.top;
-      const tr = sharedZoom.value || d3.zoomIdentity;
+        const ndcX = (mx / canvas.width) * 2 - 1;
+        const ndcY = -((my / canvas.height) * 2 - 1);
 
-      const ndcX = (mx / canvas.width) * 2 - 1;
-      const ndcY = -((my / canvas.height) * 2 - 1);
+        const hoverRadiusSq = 0.02 * 0.02;
+        let closestPoint = null;
+        let closestDist = hoverRadiusSq;
+        let closestIndex = -1;
 
-      const hoverRadius = 0.02;
-      let closestPoint = null;
-      let closestDist = hoverRadius;
-      let closestIndex = -1;
-
-      rightPointsData.value.forEach((p, i) => {
-        const px = xScale(p.x);
-        const py = yScale(p.y);
-
+        const points = rightPointsData.value;
         const tX = (2 * tr.x) / canvas.width;
         const tY = -(2 * tr.y) / canvas.height;
-        const tx = px * tr.k + tX;
-        const ty = py * tr.k + tY;
+        for (let i = 0, len = points.length; i < len; i++) {
+          const p = points[i];
+          const tx = xScale(p.x) * tr.k + tX;
+          const ty = yScale(p.y) * tr.k + tY;
+          const dx = tx - ndcX;
+          const dy = ty - ndcY;
+          const dist = dx * dx + dy * dy;
+          if (dist < closestDist) {
+            closestDist = dist;
+            closestPoint = p;
+            closestIndex = i;
+          }
+        }
 
-        const dx = tx - ndcX;
-        const dy = ty - ndcY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (closestPoint) {
+          hoveredCellId.value = closestPoint.cell_id;
+          hoveredFromLeft.value = false;
+        } else {
+          hoveredCellId.value = null;
+        }
 
-        if (dist < closestDist) {
-          closestDist = dist;
-          closestPoint = p;
-          closestIndex = i;
+        renderRightPanel();
+        if (leftRegl.value && selectedMetadataColumn.value) {
+          renderLeftPanel();
         }
       });
-
-      if (closestPoint) {
-        hoveredCellId.value = closestPoint.cell_id;
-        hoveredFromLeft.value = false;
-
-        // Calculate tooltip position based on point location on canvas
-        const px = xScale(closestPoint.x);
-        const py = yScale(closestPoint.y);
-        const tX = (2 * tr.x) / canvas.width;
-        const tY = -(2 * tr.y) / canvas.height;
-        const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
-        const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
-
-        const canvasRect = canvas.getBoundingClientRect();
-        // You can set right tooltip position here if needed
-      } else {
-        hoveredCellId.value = null;
-      }
-
-      // Single coordinated render
-      renderRightPanel();
-      if (leftRegl.value && selectedMetadataColumn.value) {
-        renderLeftPanel();
-      }
     };
 
     const mouseLeaveHandler = () => {

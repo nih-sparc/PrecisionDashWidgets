@@ -1,24 +1,19 @@
 import * as duckdb from "@duckdb/duckdb-wasm";
 
-// Metadata columns to exclude from all downstream components (lowercase)
-const EXCLUDED_COLUMNS = new Set(["donor_id"]);
-
-function stripExcluded(obj) {
-  for (const key of Object.keys(obj)) {
-    if (EXCLUDED_COLUMNS.has(key.toLowerCase())) delete obj[key];
-  }
-  return obj;
-}
-
 export class UMAPGeneViewer {
-  constructor(basePath = "/data") {
+  constructor(basePath = "/data", config = {}) {
     this.basePath = basePath;
+    this.config = config;
     this.db = null;
     this.conn = null;
-    this.umapData = null;
-    this.tsneData = null;
+    this.reductions = new Map(); // key → merged data array
     this.geneCache = new Map();
     this.loadedChunks = new Set();
+  }
+
+  // Backward-compat accessors
+  get umapData() {
+    return this.reductions.get("umap") || null;
   }
 
   _buildUrl(filename) {
@@ -57,18 +52,13 @@ export class UMAPGeneViewer {
       throw new Error(`Initialization failed: ${error.message}`);
     }
   }
+
   async loadEssentialData() {
+    // Build the list of reduction files from config or defaults
+    const reductionFiles = this._getReductionFiles();
+
     const filesToLoad = [
-      {
-        name: "umap.parquet",
-        path: this._buildUrl("umap_complete.parquet"),
-        required: true,
-      },
-      {
-        name: "tsne.parquet",
-        path: this._buildUrl("tsne_complete.parquet"),
-        required: false,
-      },
+      ...reductionFiles,
       {
         name: "gene_locations.parquet",
         path: this._buildUrl("gene_locations.parquet"),
@@ -155,43 +145,72 @@ export class UMAPGeneViewer {
       console.warn("Could not load cell metadata:", error);
     }
 
-    // Query UMAP data and merge with metadata
-
-    const umapResult = await this.conn.query('SELECT * FROM "umap.parquet"');
-    const umapArray = umapResult.toArray().map((row) => row.toJSON());
-
-    this.umapData = umapArray.map((umapRow) => {
-      const metadata = cellMetadata.get(umapRow.cell_id) || {};
-      return stripExcluded({ ...umapRow, ...metadata });
-    });
-
-    // Try to query tSNE data and merge with metadata
-    try {
-      const tsneResult = await this.conn.query('SELECT * FROM "tsne.parquet"');
-      this.tsneData = tsneResult.toArray().map((row) => {
-        const tsneRow = row.toJSON();
-        const metadata = cellMetadata.get(tsneRow.cell_id) || {};
-        return stripExcluded({ ...tsneRow, ...metadata });
-      });
-    } catch {
-      console.log("tSNE data not available");
-      this.tsneData = null;
+    // Merge each reduction with metadata and store in reductions Map
+    for (const rf of reductionFiles) {
+      try {
+        const result = await this.conn.query(`SELECT * FROM "${rf.name}"`);
+        const rows = result.toArray().map((row) => row.toJSON());
+        const merged = rows.map((row) => {
+          const metadata = cellMetadata.get(row.cell_id) || {};
+          return { ...row, ...metadata };
+        });
+        this.reductions.set(rf.reductionKey, merged);
+      } catch (err) {
+        if (rf.required) throw err;
+        console.log(`Reduction ${rf.reductionKey} not available`);
+      }
     }
   }
-  async getReductionData(reductionType = "umap") {
-    if (reductionType === "umap") {
-      if (!this.umapData) {
-        throw new Error("UMAP data not loaded");
-      }
-      return this.umapData;
-    } else if (reductionType === "tsne") {
-      if (!this.tsneData) {
-        throw new Error("tSNE data not available");
-      }
-      return this.tsneData;
-    } else {
-      throw new Error(`Unknown reduction type: ${reductionType}`);
+
+  /** Build list of reduction parquet files from config embeddings or defaults. */
+  _getReductionFiles() {
+    const embeddings = this.config?.embeddings;
+
+    if (embeddings && embeddings.length > 0) {
+      return embeddings.map((emb) => ({
+        name: `${emb.key}.parquet`,
+        path: this._buildUrl(emb.file || `${emb.key}_complete.parquet`),
+        required: emb.required !== false,
+        reductionKey: emb.key,
+      }));
     }
+
+    // Default: umap (required) + tsne (optional)
+    return [
+      {
+        name: "umap.parquet",
+        path: this._buildUrl("umap_complete.parquet"),
+        required: true,
+        reductionKey: "umap",
+      },
+      {
+        name: "tsne.parquet",
+        path: this._buildUrl("tsne_complete.parquet"),
+        required: false,
+        reductionKey: "tsne",
+      },
+    ];
+  }
+
+  async getReductionData(reductionType = "umap") {
+    const data = this.reductions.get(reductionType);
+    if (!data) {
+      throw new Error(`Reduction "${reductionType}" not available`);
+    }
+    return data;
+  }
+
+  /** Get all available reduction keys. */
+  getAvailableReductions() {
+    return Array.from(this.reductions.keys());
+  }
+
+  hasReduction(key) {
+    return this.reductions.has(key);
+  }
+
+  hasTsne() {
+    return this.hasReduction("tsne");
   }
 
   async searchGenes(query) {
@@ -218,7 +237,7 @@ export class UMAPGeneViewer {
 
       const result = await this.conn.query(`
         SELECT ${selectCols.join(", ")}
-        FROM "gene_stats.parquet" 
+        FROM "gene_stats.parquet"
         WHERE UPPER(gene_name) LIKE UPPER('%${query}%')
         ORDER BY mean_expr DESC
         LIMIT 50
@@ -245,7 +264,7 @@ export class UMAPGeneViewer {
             `);
         const rows = result.toArray();
         if (rows.length > 0) {
-          return stripExcluded(rows[0].toJSON());
+          return rows[0].toJSON();
         }
       } catch (e) {
         const result = await this.conn.query(`
@@ -253,7 +272,7 @@ export class UMAPGeneViewer {
             `);
         const rows = result.toArray();
         if (rows.length > 0) {
-          return stripExcluded(rows[0].toJSON());
+          return rows[0].toJSON();
         }
       }
 
@@ -272,8 +291,8 @@ export class UMAPGeneViewer {
     try {
       // First, look up the gene ID from the gene name
       const geneIdResult = await this.conn.query(`
-        SELECT gene_id 
-        FROM "genes.parquet" 
+        SELECT gene_id
+        FROM "genes.parquet"
         WHERE gene_name = '${geneName}'
       `);
 
@@ -286,8 +305,8 @@ export class UMAPGeneViewer {
 
       // Look up gene location
       const locationResult = await this.conn.query(`
-        SELECT location, is_precomputed 
-        FROM "gene_locations.parquet" 
+        SELECT location, is_precomputed
+        FROM "gene_locations.parquet"
         WHERE gene_name = '${geneName}'
       `);
 
@@ -347,7 +366,7 @@ export class UMAPGeneViewer {
         }
 
         const result = await this.conn.query(`
-          SELECT cell_id, expression 
+          SELECT cell_id, expression
           FROM "${chunkFileName}"
           WHERE gene_id = ${geneId}
         `);
@@ -356,11 +375,6 @@ export class UMAPGeneViewer {
       }
 
       const loadTime = performance.now() - startTime;
-      //   console.log(
-      //     `✓ Loaded ${geneName} in ${loadTime.toFixed(0)}ms (${
-      //       geneData.length
-      //     } expressing cells)`
-      //   );
 
       // Cache it
       this.geneCache.set(geneName, geneData);
@@ -369,10 +383,6 @@ export class UMAPGeneViewer {
       console.error(`Failed to load gene ${geneName}:`, error);
       throw error;
     }
-  }
-
-  hasTsne() {
-    return this.tsneData !== null;
   }
 
   getCellCount() {

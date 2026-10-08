@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, watch, markRaw } from "vue";
+import { ref, reactive, watch, computed, markRaw, provide } from "vue";
 
 import { MultiDashboard } from "../../PennsieveDashboard/src/components/index";
 import {
@@ -9,6 +9,8 @@ import {
   ProportionPlot,
 } from "./components/index";
 import { useViewerAssets } from "./composables/useViewerAssets.js";
+import { useDatasetConfig } from "./composables/useDatasetConfig.js";
+import { useSharedDataEngine, DATASET_CONFIG_KEY } from "./composables/useSharedDataEngine.js";
 
 const RawGeneExpression = markRaw(GeneExpression);
 const RawSideBySide = markRaw(SideBySide);
@@ -47,6 +49,28 @@ const {
   datasets: DATASETS,
 });
 
+// --- Dataset config composable (fetches manifest + merges with frontend config) ---
+const {
+  activeConfig,
+  loading: configLoading,
+} = useDatasetConfig({
+  dataUrl,
+  datasetId: selectedDatasetId,
+});
+
+// --- Shared data engine (ONE UMAPGeneViewer for all widgets) ---
+const {
+  viewer: sharedViewer,
+  loading: engineLoading,
+  error: engineError,
+} = useSharedDataEngine({
+  dataUrl,
+  config: activeConfig,
+});
+
+// Provide config to descendants
+provide(DATASET_CONFIG_KEY, activeConfig);
+
 // --- Services (reactive so widgets pick up URL changes) ---
 const services = reactive({
   ApiUrl: "https://api.pennsieve.net",
@@ -64,95 +88,118 @@ const availableWidgets = [
   { name: "GeneXDistribution", component: RawGeneXDistribution },
   { name: "ProportionPlot", component: RawProportionPlot },
 ];
-// Define layouts for each dashboard
-const geneCoexpressionDash = {
-  defaultLayout: [
-    {
-      id: "GeneEx-1",
-      x: 0,
-      y: 0,
-      w: 12,
-      h: 11,
-      componentKey: "GeneExpression",
-      componentName: "Gene Expression",
-      component: RawGeneExpression,
-      Props: { initialGene1: "CDH9", initialGene2: "TAC1" },
-    },
-  ],
-  availableWidgets,
-  services,
-  name: "Gene CoExpression",
-  hideEditGrid: true,
-  hideHeader: true,
-};
 
-const geneCellComparisonDash = {
-  defaultLayout: [
-    {
-      id: "SideBySide-1",
-      x: 0,
-      y: 0,
-      w: 12,
-      h: 11,
-      componentKey: "SideBySide",
-      componentName: "Side By Side Comparison",
-      component: RawSideBySide,
-      Props: { initialGene: "CDH9" }
-    },
-  ],
-  availableWidgets,
-  services,
-  name: "Side By Side",
-  hideEditGrid: true,
-  hideHeader: true,
-};
-const GeneXDistributionDash = {
-  defaultLayout: [
-    {
-      id: "GeneXDistribution-1",
-      x: 0,
-      y: 0,
-      w: 12,
-      h: 11,
-      componentKey: "GeneXDistribution",
-      componentName: "Gene Expresion Distribution",
-      component: RawGeneXDistribution,
-      Props: { initialGene: "CDH9" }
-    },
-  ],
-  availableWidgets,
-  services,
-  name: "Gene Distribution",
-  hideEditGrid: true,
-  hideHeader: true,
-};
-const proportionPlotDash = {
-  defaultLayout: [
-    {
-      id: "ProportionPlot-1",
-      x: 0,
-      y: 0,
-      w: 12,
-      h: 11,
-      componentKey: "ProportionPlot",
-      componentName: "Proportion Plot",
-      component: RawProportionPlot,
-      Props: {},
-    },
-  ],
-  availableWidgets,
-  services,
-  name: "Proportion Plot",
-  hideEditGrid: true,
-  hideHeader: true,
-};
-// Reactive dashboard options
-const dashboardOptions = ref([
-  geneCoexpressionDash,
-  geneCellComparisonDash,
-  GeneXDistributionDash,
-  proportionPlotDash,
-]);
+// Dashboard options are now computed to react to config changes
+const dashboardOptions = computed(() => {
+  const cfg = activeConfig.value;
+  const genes = cfg?.defaultGenes || {};
+
+  const geneCoexpressionDash = {
+    defaultLayout: [
+      {
+        id: "GeneEx-1",
+        x: 0,
+        y: 0,
+        w: 12,
+        h: 11,
+        componentKey: "GeneExpression",
+        componentName: "Gene Expression",
+        component: RawGeneExpression,
+        Props: {
+          initialGene1: genes.gene1 || "CDH9",
+          initialGene2: genes.gene2 || "TAC1",
+          config: cfg,
+        },
+      },
+    ],
+    availableWidgets,
+    services,
+    name: "Gene CoExpression",
+    hideEditGrid: true,
+    hideHeader: true,
+  };
+
+  const geneCellComparisonDash = {
+    defaultLayout: [
+      {
+        id: "SideBySide-1",
+        x: 0,
+        y: 0,
+        w: 12,
+        h: 11,
+        componentKey: "SideBySide",
+        componentName: "Side By Side Comparison",
+        component: RawSideBySide,
+        Props: {
+          initialGene: genes.sideBySide || "CDH9",
+          config: cfg,
+        },
+      },
+    ],
+    availableWidgets,
+    services,
+    name: "Side By Side",
+    hideEditGrid: true,
+    hideHeader: true,
+  };
+
+  const GeneXDistributionDash = {
+    defaultLayout: [
+      {
+        id: "GeneXDistribution-1",
+        x: 0,
+        y: 0,
+        w: 12,
+        h: 11,
+        componentKey: "GeneXDistribution",
+        componentName: "Gene Expresion Distribution",
+        component: RawGeneXDistribution,
+        Props: {
+          initialGene: genes.geneX || "CDH9",
+          config: cfg,
+        },
+      },
+    ],
+    availableWidgets,
+    services,
+    name: "Gene Distribution",
+    hideEditGrid: true,
+    hideHeader: true,
+  };
+
+  const proportionPlotDash = {
+    defaultLayout: [
+      {
+        id: "ProportionPlot-1",
+        x: 0,
+        y: 0,
+        w: 12,
+        h: 11,
+        componentKey: "ProportionPlot",
+        componentName: "Proportion Plot",
+        component: RawProportionPlot,
+        Props: {
+          config: cfg,
+        },
+      },
+    ],
+    availableWidgets,
+    services,
+    name: "Proportion Plot",
+    hideEditGrid: true,
+    hideHeader: true,
+  };
+
+  return [
+    geneCoexpressionDash,
+    geneCellComparisonDash,
+    GeneXDistributionDash,
+    proportionPlotDash,
+  ];
+});
+
+// For the :default prop, use the first dashboard
+const defaultDash = computed(() => dashboardOptions.value[0]);
 </script>
 
 <template>
@@ -165,17 +212,17 @@ const dashboardOptions = ref([
         {{ ds.label }}
       </option>
     </select>
-    <span v-if="loading" class="status-indicator">Loading…</span>
-    <span v-if="error" class="status-indicator error">{{ error }}</span>
+    <span v-if="loading || engineLoading" class="status-indicator">Loading…</span>
+    <span v-if="error || engineError" class="status-indicator error">{{ error || engineError }}</span>
   </div>
 
   <!-- Dashboard Content -->
   <MultiDashboard
-    v-if="dataUrl"
+    v-if="dataUrl && sharedViewer"
     :key="selectedDatasetId"
     class="dashboard-app"
     :dashboardOptions="dashboardOptions"
-    :default="geneCoexpressionDash"
+    :default="defaultDash"
     headerTitle="Precision Gene Analysis"
     headerDescription="Select a dashboard view to explore different aspects of gene analysis. Choose between co-expression analysis or side-by-side cell/gene comparison."
   ></MultiDashboard>

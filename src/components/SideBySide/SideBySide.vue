@@ -6,6 +6,7 @@
       :metadataColumn="PrecisionVars.selectedMetadataColumn ?? undefined"
       @update:Vars="(key, value) => PrecisionVars.setSelection(key, value)"
       :data-path="resolvedDataPath"
+      :config="props.config"
     ></SideBySide>
   </div>
 </template>
@@ -15,9 +16,6 @@ import SideBySide from "../../libs/SideBySide/SideBySide.vue";
 import { useDashboardGlobalVars } from "../../useGlobalVars";
 import { usePrecisionStore } from "../../stores/precisionVars";
 
-const DEFAULT_DATA_PATH =
-  "https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2";
-
 defineOptions({
   inheritAttrs: false,
 });
@@ -25,11 +23,12 @@ const props = defineProps<{
   dataPath?: string;
   initialGene?: string;
   initialMetadataColumn?: string;
+  config?: Record<string, any>;
 }>();
 const globalVars = useDashboardGlobalVars();
 const PrecisionVars = usePrecisionStore();
 const resolvedDataPath = computed(
-  () => props.dataPath ?? (globalVars ? unref(globalVars.services)?.s3Url : null) ?? DEFAULT_DATA_PATH
+  () => props.dataPath ?? (globalVars ? unref(globalVars.services)?.s3Url : null) ?? null
 );
 
 onMounted(() => {

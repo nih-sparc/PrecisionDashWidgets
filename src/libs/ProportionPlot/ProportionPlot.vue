@@ -103,17 +103,24 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from "vue";
+import { ref, shallowRef, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue";
 import * as d3 from "d3";
-import { UMAPGeneViewer } from "../dataManager";
+import { useDataEngine, useDatasetActiveConfig } from "../../composables/useSharedDataEngine.js";
+import { getMetadataColumns, getExternalLink } from "../../config/datasetConfig.js";
 
 // Props
 const props = defineProps({
   dataPath: { type: String, default: "/data" },
+  config: { type: Object, default: null },
 });
 
 // Emits
 const emit = defineEmits(["update:Vars"]);
+
+// Shared data engine + config
+const { viewer: sharedViewer, loading: engineLoading } = useDataEngine();
+const injectedConfig = useDatasetActiveConfig();
+const activeConfig = computed(() => props.config || injectedConfig.value || {});
 
 // Refs
 const plotSvg = ref(null);
@@ -124,7 +131,7 @@ const loading = ref(true);
 const error = ref(null);
 const isLoading = ref(false);
 const message = ref("");
-const umapData = ref([]);
+const umapData = shallowRef([]);
 
 const metadataColumns = ref([]);
 const xCol = ref("");
@@ -145,35 +152,30 @@ const handleResize = () => {
   }, 100);
 };
 
-const proportionData = ref([]);
+const proportionData = shallowRef([]);
 const legendItems = ref([]);
 const tooltipData = ref(null);
 const tooltipPos = ref({ x: 0, y: 0 });
 
-// Initialize
-onMounted(async () => {
-  window.addEventListener("resize", handleResize);
-
+// Initialize using shared viewer or fallback
+async function initWithViewer(viewerInstance) {
   try {
-    manager.value = new UMAPGeneViewer(props.dataPath);
-    await manager.value.initialize();
+    manager.value = viewerInstance;
 
     const data = await manager.value.getReductionData("umap");
     umapData.value = data;
 
-    // Extract metadata columns (exclude coordinate columns)
+    // Extract metadata columns using config
     if (data.length > 0) {
       const sample = data[0];
-      const cols = Object.keys(sample).filter(
-        (key) =>
-          !["cell_id", "umap_1", "umap_2", "tsne_1", "tsne_2"].includes(key)
-      );
+      const cfg = activeConfig.value;
+      const cols = getMetadataColumns(sample, cfg, cfg);
       metadataColumns.value = cols;
 
       if (cols.length >= 2) {
-        xCol.value = cols.includes("Atlas_annotation")
-          ? "Atlas_annotation"
-          : cols[0];
+        const defaultCol = cfg?.defaultColorBy;
+        xCol.value =
+          defaultCol && cols.includes(defaultCol) ? defaultCol : cols[0];
         yCol.value = cols[1] !== xCol.value ? cols[1] : cols[0];
       } else if (cols.length === 1) {
         xCol.value = cols[0];
@@ -185,7 +187,6 @@ onMounted(async () => {
 
     await nextTick();
 
-    // Auto-plot if we have columns
     if (xCol.value && yCol.value) {
       await plot();
     }
@@ -193,6 +194,26 @@ onMounted(async () => {
     console.error("Failed to initialize:", err);
     error.value = `Failed to load data: ${err.message}`;
     loading.value = false;
+  }
+}
+
+onMounted(async () => {
+  window.addEventListener("resize", handleResize);
+
+  if (sharedViewer.value) {
+    await initWithViewer(sharedViewer.value);
+  } else if (!engineLoading.value) {
+    const { UMAPGeneViewer } = await import("../dataManager.js");
+    const v = new UMAPGeneViewer(props.dataPath);
+    await v.initialize();
+    await initWithViewer(v);
+  } else {
+    const unwatch = watch(sharedViewer, async (v) => {
+      if (v) {
+        unwatch();
+        await initWithViewer(v);
+      }
+    });
   }
 });
 
@@ -390,28 +411,34 @@ function drawPlot({ rows, xLevels, yLevels }) {
     .attr("transform", `translate(0,${innerHeight})`)
     .call(d3.axisBottom(xScale));
 
-  const isAtlasAnnotation = xCol.value.toLowerCase() === 'atlas_annotation';
+  const cfg = activeConfig.value;
+  let hasLinks = false;
+  if (cfg?.externalLink) {
+    const testLink = getExternalLink(cfg, xCol.value, "test");
+    hasLinks = testLink !== null;
+  }
 
-  if (isAtlasAnnotation) {
-    // Wrap each tick text in an SVG <a> element linking to nervosensus
+  if (hasLinks) {
     xAxisGroup.selectAll(".tick").each(function () {
       const tick = d3.select(this);
       const textEl = tick.select("text");
       const label = textEl.text();
-      const href = `https://nervosensus.netlify.app/?view=cards&atlasannotation=${label}`;
+      const href = getExternalLink(cfg, xCol.value, label);
 
-      const link = tick.append("a")
-        .attr("href", href)
-        .attr("target", "_blank");
+      if (href) {
+        const link = tick.append("a")
+          .attr("href", href)
+          .attr("target", "_blank");
 
-      link.node().appendChild(textEl.node());
+        link.node().appendChild(textEl.node());
 
-      textEl
-        .attr("transform", "rotate(-45)")
-        .style("text-anchor", "end")
-        .style("font-size", "12px")
-        .style("fill", "#667eea")
-        .style("cursor", "pointer");
+        textEl
+          .attr("transform", "rotate(-45)")
+          .style("text-anchor", "end")
+          .style("font-size", "12px")
+          .style("fill", "#667eea")
+          .style("cursor", "pointer");
+      }
     });
   } else {
     xAxisGroup

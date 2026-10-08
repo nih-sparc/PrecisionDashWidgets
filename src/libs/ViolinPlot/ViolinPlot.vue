@@ -107,19 +107,26 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
+import { ref, shallowRef, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import * as d3 from "d3";
-import { UMAPGeneViewer } from "../dataManager";
+import { useDataEngine, useDatasetActiveConfig } from "../../composables/useSharedDataEngine.js";
+import { getMetadataColumns, getExternalLink } from "../../config/datasetConfig.js";
 
 // Props
 const props = defineProps({
   dataPath: { type: String, default: "/data" },
   metadataColumn: { type: String, default: null },
   gene: { type: String, default: null },
+  config: { type: Object, default: null },
 });
 
 // Emits
 const emit = defineEmits(["update:Vars"]);
+
+// Shared data engine + config
+const { viewer: sharedViewer, loading: engineLoading } = useDataEngine();
+const injectedConfig = useDatasetActiveConfig();
+const activeConfig = computed(() => props.config || injectedConfig.value || {});
 
 // Refs
 const violinSvg = ref(null);
@@ -130,7 +137,7 @@ const manager = ref(null);
 const loading = ref(true);
 const error = ref(null);
 const dataLoading = ref(false);
-const umapData = ref([]);
+const umapData = shallowRef([]);
 
 // X-axis (metadata)
 const metadataColumns = ref([]);
@@ -147,7 +154,7 @@ const plotType = ref("violin"); // 'violin' or 'box'
 const showDataPoints = ref(false);
 
 // Plot data
-const violinData = ref([]);
+const violinData = shallowRef([]);
 
 // Search timeout
 let searchTimeout = null;
@@ -213,36 +220,28 @@ const handleResize = () => {
   }, 100);
 };
 
-// Initialize
-onMounted(async () => {
-  // Add resize listener for canvas
-  window.addEventListener("resize", handleResize);
-
+// Initialize using shared viewer or fallback
+async function initWithViewer(viewerInstance) {
   try {
-    manager.value = new UMAPGeneViewer(props.dataPath);
-    await manager.value.initialize();
+    manager.value = viewerInstance;
 
     const data = await manager.value.getReductionData("umap");
     umapData.value = data;
 
-    // Extract metadata columns
+    // Extract metadata columns using config
     if (data.length > 0) {
       const sample = data[0];
-      const cols = Object.keys(sample).filter(
-        (key) =>
-          !["cell_id", "umap_1", "umap_2", "tsne_1", "tsne_2"].includes(key)
-      );
+      const cfg = activeConfig.value;
+      const cols = getMetadataColumns(sample, cfg, cfg);
       metadataColumns.value = cols;
 
       if (cols.length > 0) {
-        // Use prop if provided, otherwise default logic
         if (props.metadataColumn && cols.includes(props.metadataColumn)) {
           selectedMetadataColumn.value = props.metadataColumn;
         } else if (!selectedMetadataColumn.value) {
-          // Default to Atlas_annotations if available
-          selectedMetadataColumn.value = cols.includes("Atlas_annotation")
-            ? "Atlas_annotation"
-            : cols[0];
+          const defaultCol = cfg?.defaultColorBy;
+          selectedMetadataColumn.value =
+            defaultCol && cols.includes(defaultCol) ? defaultCol : cols[0];
         }
       }
     }
@@ -262,6 +261,26 @@ onMounted(async () => {
     console.error("Failed to initialize:", err);
     error.value = `Failed to load data: ${err.message}`;
     loading.value = false;
+  }
+}
+
+onMounted(async () => {
+  window.addEventListener("resize", handleResize);
+
+  if (sharedViewer.value) {
+    await initWithViewer(sharedViewer.value);
+  } else if (!engineLoading.value) {
+    const { UMAPGeneViewer } = await import("../dataManager.js");
+    const v = new UMAPGeneViewer(props.dataPath);
+    await v.initialize();
+    await initWithViewer(v);
+  } else {
+    const unwatch = watch(sharedViewer, async (v) => {
+      if (v) {
+        unwatch();
+        await initWithViewer(v);
+      }
+    });
   }
 });
 
@@ -564,30 +583,36 @@ function drawViolinPlot(data) {
     .attr("transform", `translate(0,${innerHeight})`)
     .call(d3.axisBottom(xScale));
 
-  const isAtlasAnnotation = selectedMetadataColumn.value.toLowerCase() === 'atlas_annotation';
+  const cfg = activeConfig.value;
 
-  if (isAtlasAnnotation) {
-    // Wrap each tick text in an SVG <a> element linking to nervosensus
+  // Check if external links should be applied to x-axis ticks
+  let hasLinks = false;
+  if (cfg?.externalLink) {
+    const testLink = getExternalLink(cfg, selectedMetadataColumn.value, "test");
+    hasLinks = testLink !== null;
+  }
+
+  if (hasLinks) {
     xAxisGroup.selectAll(".tick").each(function () {
       const tick = d3.select(this);
       const textEl = tick.select("text");
       const label = textEl.text();
-      const href = `https://nervosensus.netlify.app/?view=cards&atlasannotation=${label}`;
+      const href = getExternalLink(cfg, selectedMetadataColumn.value, label);
 
-      // Create an <a> wrapper inside the tick
-      const link = tick.append("a")
-        .attr("href", href)
-        .attr("target", "_blank");
+      if (href) {
+        const link = tick.append("a")
+          .attr("href", href)
+          .attr("target", "_blank");
 
-      // Move the text element into the link
-      link.node().appendChild(textEl.node());
+        link.node().appendChild(textEl.node());
 
-      textEl
-        .attr("transform", "rotate(-45)")
-        .style("text-anchor", "end")
-        .style("font-size", "12px")
-        .style("fill", "#667eea")
-        .style("cursor", "pointer");
+        textEl
+          .attr("transform", "rotate(-45)")
+          .style("text-anchor", "end")
+          .style("font-size", "12px")
+          .style("fill", "#667eea")
+          .style("cursor", "pointer");
+      }
     });
   } else {
     xAxisGroup.selectAll("text")

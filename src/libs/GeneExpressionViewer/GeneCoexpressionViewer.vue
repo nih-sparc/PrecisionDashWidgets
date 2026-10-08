@@ -366,6 +366,7 @@
 <script setup>
 import {
   ref,
+  shallowRef,
   computed,
   onMounted,
   onBeforeUnmount,
@@ -374,17 +375,23 @@ import {
 } from "vue";
 import * as d3 from "d3";
 import createRegl from "regl";
-import { UMAPGeneViewer } from "../dataManager";
+import { useDataEngine, useDatasetActiveConfig } from "../../composables/useSharedDataEngine.js";
 
 // Props
 const props = defineProps({
   dataPath: { type: String, default: "/data" },
   gene1: { type: [String, null], default: null },
   gene2: { type: [String, null], default: null },
+  config: { type: Object, default: null },
 });
 
 // Emits
 const emit = defineEmits(["update:Vars"]);
+
+// Shared data engine + config
+const { viewer: sharedViewer, loading: engineLoading } = useDataEngine();
+const injectedConfig = useDatasetActiveConfig();
+const activeConfig = computed(() => props.config || injectedConfig.value || {});
 
 // Refs
 const chartCanvas = ref(null);
@@ -394,7 +401,7 @@ const viewer = ref(null);
 const currentZoom = ref(null);
 const hoveredPoint = ref(null);
 const tooltipPos = ref({ x: 0, y: 0 });
-const pointsData = ref([]);
+const pointsData = shallowRef([]);
 const resizeObserver = ref(null);
 const lastCanvasSize = ref({ w: 0, h: 0 });
 
@@ -415,7 +422,7 @@ const gene1Suggestions = ref([]);
 const gene2Suggestions = ref([]);
 
 // Data
-const reductionData = ref([]);
+const reductionData = shallowRef([]);
 const gene1Data = ref(null);
 const gene2Data = ref(null);
 
@@ -498,21 +505,18 @@ const debouncedSearchGenes = (geneNumber) => {
   searchTimeout = setTimeout(() => searchGenes(geneNumber), 300);
 };
 
-// Init
-onMounted(async () => {
+// Initialize with a viewer instance
+async function initWithViewer(viewerInstance) {
   try {
-    loadingMessage.value = "Loading data manager...";
-    viewer.value = new UMAPGeneViewer(props.dataPath);
-    await viewer.value.initialize();
+    loadingMessage.value = "Loading data...";
+    viewer.value = viewerInstance;
     hasTsne.value = viewer.value.hasTsne();
     await loadReductionData();
     loading.value = false;
     loadingMessage.value = "";
 
-    // Responsive sizing (no fixed size)
     setupResizeObserver();
 
-    // If both genes provided via props, visualize automatically
     if (props.gene1 && props.gene2) {
       gene1.value = props.gene1;
       gene2.value = props.gene2;
@@ -524,6 +528,27 @@ onMounted(async () => {
     console.error("Failed to initialize:", err);
     error.value = `Failed to load data: ${err.message}. Please check that your data files are in the correct location.`;
     loading.value = false;
+  }
+}
+
+onMounted(async () => {
+  if (sharedViewer.value) {
+    await initWithViewer(sharedViewer.value);
+  } else if (!engineLoading.value) {
+    // Fallback: create own viewer (standalone mode)
+    loadingMessage.value = "Loading data manager...";
+    const { UMAPGeneViewer } = await import("../dataManager.js");
+    const v = new UMAPGeneViewer(props.dataPath);
+    await v.initialize();
+    await initWithViewer(v);
+  } else {
+    loadingMessage.value = "Waiting for data engine...";
+    const unwatch = watch(sharedViewer, async (v) => {
+      if (v) {
+        unwatch();
+        await initWithViewer(v);
+      }
+    });
   }
 });
 
@@ -730,7 +755,7 @@ async function renderChart() {
       norm1,
       norm2,
       cell_id: cell.cell_id,
-      cell_type: cell.cell_type || "Unknown",
+      cell_type: cell[activeConfig.value?.cellTypeColumn || "cell_type"] || "Unknown",
     };
   });
 
@@ -918,45 +943,51 @@ async function renderChart() {
     { passive: false }
   );
 
+  let hoverRafId = null;
   canvas.addEventListener("mousemove", (event) => {
-    const r = canvas.getBoundingClientRect();
-    const mx = event.clientX - r.left;
-    const my = event.clientY - r.top;
-    const tr = currentZoom.value || d3.zoomIdentity;
+    if (hoverRafId) return; // already have a pending frame
+    hoverRafId = requestAnimationFrame(() => {
+      hoverRafId = null;
+      const r = canvas.getBoundingClientRect();
+      const mx = event.clientX - r.left;
+      const my = event.clientY - r.top;
+      const tr = currentZoom.value || d3.zoomIdentity;
 
-    const ndcX = (mx / canvas.width) * 2 - 1;
-    const ndcY = -((my / canvas.height) * 2 - 1);
+      const ndcX = (mx / canvas.width) * 2 - 1;
+      const ndcY = -((my / canvas.height) * 2 - 1);
 
-    const hoverRadius = 10 / tr.k;
-    let closestPoint = null;
-    let closestDist = hoverRadius;
-    let closestIndex = -1;
+      const hoverRadius = 10 / tr.k;
+      const hoverRadiusSq = hoverRadius * hoverRadius;
+      let closestPoint = null;
+      let closestDist = hoverRadiusSq;
+      let closestIndex = -1;
 
-    pointsData.value.forEach((p, i) => {
-      const px = xScale(p.x);
-      const py = yScale(p.y);
+      const points = pointsData.value;
       const tX = (2 * tr.x) / canvas.width;
       const tY = -(2 * tr.y) / canvas.height;
-      const tx = px * tr.k + tX;
-      const ty = py * tr.k + tY;
-      const dx = tx - ndcX;
-      const dy = ty - ndcY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestPoint = p;
-        closestIndex = i;
+      for (let i = 0, len = points.length; i < len; i++) {
+        const p = points[i];
+        const tx = xScale(p.x) * tr.k + tX;
+        const ty = yScale(p.y) * tr.k + tY;
+        const dx = tx - ndcX;
+        const dy = ty - ndcY;
+        const dist = dx * dx + dy * dy;
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestPoint = p;
+          closestIndex = i;
+        }
+      }
+
+      if (closestPoint) {
+        hoveredPoint.value = closestPoint;
+        tooltipPos.value = { x: event.clientX + 15, y: event.clientY - 10 };
+        drawHighlightedPoint(closestIndex, tr);
+      } else {
+        hoveredPoint.value = null;
+        render();
       }
     });
-
-    if (closestPoint) {
-      hoveredPoint.value = closestPoint;
-      tooltipPos.value = { x: event.clientX + 15, y: event.clientY - 10 };
-      drawHighlightedPoint(closestIndex, tr);
-    } else {
-      hoveredPoint.value = null;
-      render();
-    }
   });
 
   canvas.addEventListener("mouseleave", () => {
