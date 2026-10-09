@@ -376,6 +376,7 @@ import {
 import * as d3 from "d3";
 import createRegl from "regl";
 import { useDataEngine, useDatasetActiveConfig } from "../../composables/useSharedDataEngine.js";
+import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
 
 // Props
 const props = defineProps({
@@ -390,6 +391,7 @@ const emit = defineEmits(["update:Vars"]);
 
 // Shared data engine + config
 const { viewer: sharedViewer, loading: engineLoading } = useDataEngine();
+const { runWhenActive, observeResize } = useKeepAliveGate();
 const injectedConfig = useDatasetActiveConfig();
 const activeConfig = computed(() => props.config || injectedConfig.value || {});
 
@@ -397,7 +399,7 @@ const activeConfig = computed(() => props.config || injectedConfig.value || {});
 const chartCanvas = ref(null);
 const gradientCanvas = ref(null);
 const reglInstance = ref(null);
-const viewer = ref(null);
+const viewer = shallowRef(null);
 const currentZoom = ref(null);
 const hoveredPoint = ref(null);
 const tooltipPos = ref({ x: 0, y: 0 });
@@ -455,7 +457,7 @@ watch(
       gene1Search.value = value;
       gene1.value = value;
       if (value && gene2.value && reductionData.value.length > 0) {
-        visualize();
+        runWhenActive(visualize);
       }
     }
   }
@@ -469,7 +471,7 @@ watch(
       gene2Search.value = value;
       gene2.value = value;
       if (value && gene1.value && reductionData.value.length > 0) {
-        visualize();
+        runWhenActive(visualize);
       }
     }
   }
@@ -647,11 +649,10 @@ function hexToRgb(hex) {
 function setupResizeObserver() {
   const container = chartCanvas.value?.parentElement?.parentElement; // chart-container -> inner wrapper -> canvas
   if (!container) return;
-  resizeObserver.value = new ResizeObserver(async () => {
+  resizeObserver.value = observeResize(container, async () => {
     if (!chartCanvas.value || !showChart.value) return;
     await renderChart(); // re-render on container size change
   });
-  resizeObserver.value.observe(container);
 }
 
 async function renderChart() {

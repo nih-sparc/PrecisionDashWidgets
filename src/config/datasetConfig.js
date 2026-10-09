@@ -85,6 +85,42 @@ export function getMetadataColumns(sampleRow, config, manifest = null) {
   });
 }
 
+// Columns with more distinct values than this are treated as continuous / per-cell
+// (e.g. nCount_RNA, barcodes) and left out of category dropdowns
+export const DEFAULT_MAX_CATEGORIES = 100;
+
+/**
+ * Narrow metadata columns to ones usable as categories (x-axis, color-by, grouping).
+ * A column qualifies if it has at most `config.maxCategories` distinct values, or is
+ * listed in `config.categoricalColumns`. Scans rows once, dropping a column as soon
+ * as it exceeds the limit.
+ */
+export function getCategoricalColumns(rows, columns, config) {
+  const max = config?.maxCategories ?? DEFAULT_MAX_CATEGORIES;
+  const forced = new Set(
+    (config?.categoricalColumns || []).map((c) => c.toLowerCase())
+  );
+
+  const candidates = columns.filter((c) => !forced.has(c.toLowerCase()));
+  const seen = new Map(candidates.map((c) => [c, new Set()]));
+  const tooMany = new Set();
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    for (const col of seen.keys()) {
+      const values = seen.get(col);
+      values.add(row[col]);
+      if (values.size > max) {
+        tooMany.add(col);
+        seen.delete(col);
+      }
+    }
+    if (seen.size === 0) break;
+  }
+
+  return columns.filter((c) => !tooMany.has(c));
+}
+
 /**
  * Generate an external link URL for a given column/value, or null.
  */

@@ -90,6 +90,11 @@
             />
             Show data points
           </label>
+
+          <label class="checkbox-label">
+            <input v-model="includeZeros" type="checkbox" class="checkbox" />
+            Include non-expressing cells (0)
+          </label>
         </div>
 
         <!-- Violin Plot Canvas -->
@@ -98,6 +103,7 @@
             <div class="small-spinner"></div>
             <p>Loading data...</p>
           </div>
+          <div v-if="groupLimitMessage" class="group-limit-message">{{ groupLimitMessage }}</div>
           <svg ref="violinSvg" class="violin-svg"></svg>
           <canvas ref="dataPointsCanvas" class="data-points-canvas"></canvas>
         </div>
@@ -110,7 +116,8 @@
 import { ref, shallowRef, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import * as d3 from "d3";
 import { useDataEngine, useDatasetActiveConfig } from "../../composables/useSharedDataEngine.js";
-import { getMetadataColumns, getExternalLink } from "../../config/datasetConfig.js";
+import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
+import { getMetadataColumns, getCategoricalColumns, getExternalLink } from "../../config/datasetConfig.js";
 
 // Props
 const props = defineProps({
@@ -125,13 +132,14 @@ const emit = defineEmits(["update:Vars"]);
 
 // Shared data engine + config
 const { viewer: sharedViewer, loading: engineLoading } = useDataEngine();
+const { runWhenActive } = useKeepAliveGate();
 const injectedConfig = useDatasetActiveConfig();
 const activeConfig = computed(() => props.config || injectedConfig.value || {});
 
 // Refs
 const violinSvg = ref(null);
 const dataPointsCanvas = ref(null);
-const manager = ref(null);
+const manager = shallowRef(null);
 
 // State
 const loading = ref(true);
@@ -155,6 +163,13 @@ const showDataPoints = ref(false);
 
 // Plot data
 const violinData = shallowRef([]);
+const groupLimitMessage = ref("");
+// scRNA data is mostly zeros, which flattens every violin into a spike at 0.
+// Off by default: shapes use expressing cells only, with % expressing labeled per group.
+const includeZeros = ref(false);
+
+// Safety cap if a high-cardinality column still reaches the x-axis
+const MAX_VIOLIN_GROUPS = 50;
 
 // Search timeout
 let searchTimeout = null;
@@ -166,7 +181,7 @@ watch(
     if (newVal && newVal !== selectedMetadataColumn.value) {
       selectedMetadataColumn.value = newVal;
       if (umapData.value.length > 0) {
-        updateViolin();
+        runWhenActive(updateViolin);
       }
     }
   }
@@ -179,7 +194,7 @@ watch(
       selectedGene.value = newVal;
       geneSearch.value = newVal;
       if (umapData.value.length > 0) {
-        renderViolinPlot();
+        runWhenActive(renderViolinPlot);
       }
     }
   }
@@ -197,7 +212,7 @@ watch(selectedGene, (newVal) => {
   }
 });
 
-watch(plotType, () => {
+watch([plotType, includeZeros], () => {
   if (violinData.value.length > 0) {
     drawViolinPlot(violinData.value);
     if (showDataPoints.value) {
@@ -208,16 +223,17 @@ watch(plotType, () => {
 
 // Handle window resize for both SVG and canvas
 let resizeTimeout = null;
+function redrawViolin() {
+  if (violinData.value.length > 0) {
+    drawViolinPlot(violinData.value);
+    if (showDataPoints.value) {
+      drawDataPoints(violinData.value);
+    }
+  }
+}
 const handleResize = () => {
   clearTimeout(resizeTimeout);
-  resizeTimeout = setTimeout(() => {
-    if (violinData.value.length > 0) {
-      drawViolinPlot(violinData.value);
-      if (showDataPoints.value) {
-        drawDataPoints(violinData.value);
-      }
-    }
-  }, 100);
+  resizeTimeout = setTimeout(() => runWhenActive(redrawViolin), 100);
 };
 
 // Initialize using shared viewer or fallback
@@ -232,7 +248,7 @@ async function initWithViewer(viewerInstance) {
     if (data.length > 0) {
       const sample = data[0];
       const cfg = activeConfig.value;
-      const cols = getMetadataColumns(sample, cfg, cfg);
+      const cols = getCategoricalColumns(data, getMetadataColumns(sample, cfg, cfg), cfg);
       metadataColumns.value = cols;
 
       if (cols.length > 0) {
@@ -355,10 +371,24 @@ async function renderViolinPlot() {
     });
 
     // Convert to array format
-    const data = Array.from(grouped.entries()).map(([category, values]) => ({
+    let data = Array.from(grouped.entries()).map(([category, values]) => ({
       category: String(category),
       values: values,
     }));
+
+    // Keep the largest groups (in original order) so the plot stays responsive
+    groupLimitMessage.value = "";
+    if (data.length > MAX_VIOLIN_GROUPS) {
+      const keep = new Set(
+        data
+          .slice()
+          .sort((a, b) => b.values.length - a.values.length)
+          .slice(0, MAX_VIOLIN_GROUPS)
+          .map((d) => d.category)
+      );
+      groupLimitMessage.value = `Showing the ${MAX_VIOLIN_GROUPS} largest of ${data.length} ${selectedMetadataColumn.value} groups.`;
+      data = data.filter((d) => keep.has(d.category));
+    }
 
     violinData.value = data;
     await nextTick();
@@ -441,10 +471,22 @@ function drawViolinPlot(data) {
     };
   }
 
+  // Shared with drawDataPoints so dots follow each violin's shape
+  const densities = new Map();
+  svg.property("__scales__", { xScale, yScale, margin, width, height, densities });
+
+  // Floor so small or tight groups still get a visible shape instead of a hairline
+  const [yMin, yMax] = yScale.domain();
+  const minBandwidth = (yMax - yMin) * 0.02 || 0.1;
+
   // Draw plots for each category
   data.forEach((d) => {
     const category = d.category;
-    const values = d.values.filter((v) => v != null && !isNaN(v));
+    const validValues = d.values.filter((v) => v != null && !isNaN(v));
+    const values = plottedValues(validValues);
+    const xCenter = xScale(category) + xScale.bandwidth() / 2;
+
+    drawExpressingLabel(g, xCenter, xScale.bandwidth(), validValues);
 
     if (values.length === 0) return;
 
@@ -459,9 +501,9 @@ function drawViolinPlot(data) {
 
     if (plotType.value === "violin") {
       // Calculate bandwidth using Silverman's rule of thumb
-      const std = d3.deviation(values);
+      const std = d3.deviation(values) || 0;
       const n = values.length;
-      const bandwidth = 1.06 * std * Math.pow(n, -1 / 5);
+      const bandwidth = Math.max(1.06 * std * Math.pow(n, -1 / 5), minBandwidth);
 
       // Generate density estimate
       const thresholds = yScale.ticks(50);
@@ -477,8 +519,7 @@ function drawViolinPlot(data) {
         .domain([0, maxDensity])
         .range([0, xScale.bandwidth() / 2]);
 
-      // Store scales on svg for later use by data points
-      svg.property("__scales__", { xScale, yScale, margin, width, height });
+      densities.set(category, { density, xNum });
 
       // Draw violin shape
       const area = d3
@@ -518,9 +559,6 @@ function drawViolinPlot(data) {
       // Box plot mode
       const boxWidth = Math.min(xScale.bandwidth() * 0.6, 80);
       const whiskerWidth = boxWidth * 0.5;
-
-      // Store scales on svg
-      svg.property("__scales__", { xScale, yScale, margin, width, height });
 
       // Draw whiskers (min to Q1, Q3 to max)
       g.append("line")
@@ -659,6 +697,40 @@ function drawViolinPlot(data) {
     .text(`Violin Plot: ${yLabel} by ${selectedMetadataColumn.value}`);
 }
 
+function plottedValues(values) {
+  return includeZeros.value ? values : values.filter((v) => v > 0);
+}
+
+// "% expressing" above each group, so hiding zeros doesn't hide how many there were
+function drawExpressingLabel(g, xCenter, bandWidth, values) {
+  if (bandWidth < 24 || values.length === 0) return;
+  const expressing = values.filter((v) => v > 0).length;
+  const pct = Math.round((expressing / values.length) * 100);
+
+  g.append("text")
+    .attr("x", xCenter)
+    .attr("y", -6)
+    .attr("text-anchor", "middle")
+    .style("font-size", "11px")
+    .style("fill", "#4b5563")
+    .text(`${pct}%`)
+    .append("title")
+    .text(
+      `${expressing.toLocaleString()} of ${values.length.toLocaleString()} cells express ${selectedGene.value}`
+    );
+}
+
+// Violin half-width at a given expression value, interpolated from the density curve
+function violinHalfWidthAt(value, density, xNum) {
+  const i = d3.bisector((d) => d[0]).left(density, value);
+  if (i <= 0) return xNum(density[0][1]);
+  if (i >= density.length) return xNum(density[density.length - 1][1]);
+  const [t0, d0] = density[i - 1];
+  const [t1, d1] = density[i];
+  const f = t1 === t0 ? 0 : (value - t0) / (t1 - t0);
+  return xNum(d0 + f * (d1 - d0));
+}
+
 // Draw data points as canvas overlay for better performance
 function drawDataPoints(data) {
   if (!data || data.length === 0) return;
@@ -673,7 +745,7 @@ function drawDataPoints(data) {
     return;
   }
 
-  const { xScale, yScale, margin, width, height } = scales;
+  const { xScale, yScale, margin, width, height, densities } = scales;
 
   // Set canvas size to match SVG
   const dpr = window.devicePixelRatio || 1;
@@ -697,12 +769,14 @@ function drawDataPoints(data) {
   // Draw all points
   data.forEach((d) => {
     const category = d.category;
-    const values = d.values.filter((v) => v != null && !isNaN(v));
+    const values = plottedValues(d.values.filter((v) => v != null && !isNaN(v)));
     if (values.length === 0) return;
 
     const x1 = xScale(category) + xScale.bandwidth() / 2;
     const jitterWidth = xScale.bandwidth() * 0.35;
     const color = colorScale(category);
+    // Violin mode: spread dots only as wide as the violin is at that height (sina plot)
+    const shape = plotType.value === "violin" ? densities?.get(category) : null;
 
     ctx.fillStyle = color;
     ctx.strokeStyle = "white";
@@ -710,7 +784,9 @@ function drawDataPoints(data) {
     ctx.globalAlpha = 0.4;
 
     values.forEach((value) => {
-      const x = x1 + (Math.random() - 0.5) * jitterWidth;
+      const x = shape
+        ? x1 + (Math.random() * 2 - 1) * violinHalfWidthAt(value, shape.density, shape.xNum)
+        : x1 + (Math.random() - 0.5) * jitterWidth;
       const y = yScale(value);
 
       ctx.beginPath();
@@ -945,6 +1021,15 @@ function updateDataPoints() {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.group-limit-message {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-size: 13px;
+  color: #4b5563;
+  z-index: 1;
 }
 
 .violin-svg {

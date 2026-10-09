@@ -1,4 +1,4 @@
-import { ref, provide, inject, watch, isRef, toRef } from "vue";
+import { ref, shallowRef, markRaw, provide, inject, watch, isRef, toRef } from "vue";
 import { UMAPGeneViewer } from "../libs/dataManager.js";
 
 const DATA_ENGINE_KEY = Symbol("shared-data-engine");
@@ -14,7 +14,7 @@ export function useSharedDataEngine({ dataUrl, config }) {
   const dataUrlRef = isRef(dataUrl) ? dataUrl : toRef(dataUrl);
   const configRef = isRef(config) ? config : toRef(config);
 
-  const viewer = ref(null);
+  const viewer = shallowRef(null);
   const loading = ref(false);
   const error = ref(null);
 
@@ -38,7 +38,7 @@ export function useSharedDataEngine({ dataUrl, config }) {
 
       const v = new UMAPGeneViewer(url, engineConfig);
       await v.initialize();
-      viewer.value = v;
+      viewer.value = markRaw(v);
     } catch (err) {
       console.error("Failed to create shared data engine:", err);
       error.value = err.message;

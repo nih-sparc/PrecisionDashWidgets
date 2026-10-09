@@ -189,7 +189,8 @@ import {
 import * as d3 from "d3";
 import createRegl from "regl";
 import { useDataEngine, useDatasetActiveConfig } from "../../composables/useSharedDataEngine.js";
-import { getMetadataColumns, getExternalLink } from "../../config/datasetConfig.js";
+import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
+import { getMetadataColumns, getCategoricalColumns, getExternalLink } from "../../config/datasetConfig.js";
 
 // Props
 const props = defineProps({
@@ -203,6 +204,7 @@ const emit = defineEmits(["update:Vars"]);
 
 // Shared data engine + config (injected from ancestor)
 const { viewer: sharedViewer, loading: engineLoading, error: engineError } = useDataEngine();
+const { runWhenActive, observeResize } = useKeepAliveGate();
 const injectedConfig = useDatasetActiveConfig();
 const activeConfig = computed(() => props.config || injectedConfig.value || {});
 
@@ -212,7 +214,7 @@ function getExternalLinkUrl(columnName, value) {
 // Refs
 const leftCanvas = ref(null);
 const rightCanvas = ref(null);
-const manager = ref(null);
+const manager = shallowRef(null);
 const leftRegl = ref(null);
 const rightRegl = ref(null);
 const sharedZoom = ref(d3.zoomIdentity); // Unified zoom state
@@ -253,7 +255,7 @@ watch(
     if (newVal && newVal !== selectedMetadataColumn.value) {
       selectedMetadataColumn.value = newVal;
       if (umapData.value.length > 0) {
-        renderMetadataUMAP();
+        runWhenActive(renderMetadataUMAP);
       }
     }
   }
@@ -266,7 +268,7 @@ watch(
       selectedGene.value = newVal;
       geneSearch.value = newVal;
       if (umapData.value.length > 0) {
-        renderGeneUMAP();
+        runWhenActive(renderGeneUMAP);
       }
     }
   }
@@ -389,7 +391,7 @@ async function initWithViewer(viewerInstance) {
     if (data.length > 0) {
       const sample = data[0];
       const cfg = activeConfig.value;
-      const cols = getMetadataColumns(sample, cfg, cfg);
+      const cols = getCategoricalColumns(data, getMetadataColumns(sample, cfg, cfg), cfg);
       metadataColumns.value = cols;
 
       if (cols.length > 0) {
@@ -457,22 +459,20 @@ onBeforeUnmount(() => {
 // Setup resize observers
 function setupResizeObservers() {
   if (leftCanvas.value) {
-    leftResizeObserver.value = new ResizeObserver(() => {
+    // Observe the panel instead of the canvas container
+    leftResizeObserver.value = observeResize(leftCanvas.value.closest(".panel"), () => {
       // Ignore resize events during legend animation
       if (!isLegendAnimating.value && selectedMetadataColumn.value) {
         renderMetadataUMAP();
       }
     });
-    // Observe the panel instead of the canvas container
-    leftResizeObserver.value.observe(leftCanvas.value.closest(".panel"));
   }
 
   if (rightCanvas.value) {
-    rightResizeObserver.value = new ResizeObserver(() => {
+    // Observe the panel instead of the canvas container
+    rightResizeObserver.value = observeResize(rightCanvas.value.closest(".panel"), () => {
       if (selectedGene.value) renderGeneUMAP();
     });
-    // Observe the panel instead of the canvas container
-    rightResizeObserver.value.observe(rightCanvas.value.closest(".panel"));
   }
 }
 

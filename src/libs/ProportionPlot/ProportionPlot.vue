@@ -106,7 +106,8 @@
 import { ref, shallowRef, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue";
 import * as d3 from "d3";
 import { useDataEngine, useDatasetActiveConfig } from "../../composables/useSharedDataEngine.js";
-import { getMetadataColumns, getExternalLink } from "../../config/datasetConfig.js";
+import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
+import { getMetadataColumns, getCategoricalColumns, getExternalLink } from "../../config/datasetConfig.js";
 
 // Props
 const props = defineProps({
@@ -119,12 +120,13 @@ const emit = defineEmits(["update:Vars"]);
 
 // Shared data engine + config
 const { viewer: sharedViewer, loading: engineLoading } = useDataEngine();
+const { runWhenActive } = useKeepAliveGate();
 const injectedConfig = useDatasetActiveConfig();
 const activeConfig = computed(() => props.config || injectedConfig.value || {});
 
 // Refs
 const plotSvg = ref(null);
-const manager = ref(null);
+const manager = shallowRef(null);
 
 // State
 const loading = ref(true);
@@ -143,13 +145,14 @@ const OTHER_LABEL = "(other)";
 
 // Handle window resize
 let resizeTimeout = null;
+function redrawProportions() {
+  if (proportionData.value.length > 0) {
+    drawPlot(proportionData.value);
+  }
+}
 const handleResize = () => {
   clearTimeout(resizeTimeout);
-  resizeTimeout = setTimeout(() => {
-    if (proportionData.value.length > 0) {
-      drawPlot(proportionData.value);
-    }
-  }, 100);
+  resizeTimeout = setTimeout(() => runWhenActive(redrawProportions), 100);
 };
 
 const proportionData = shallowRef([]);
@@ -169,7 +172,7 @@ async function initWithViewer(viewerInstance) {
     if (data.length > 0) {
       const sample = data[0];
       const cfg = activeConfig.value;
-      const cols = getMetadataColumns(sample, cfg, cfg);
+      const cols = getCategoricalColumns(data, getMetadataColumns(sample, cfg, cfg), cfg);
       metadataColumns.value = cols;
 
       if (cols.length >= 2) {
