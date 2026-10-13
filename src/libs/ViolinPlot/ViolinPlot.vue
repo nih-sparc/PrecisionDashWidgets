@@ -241,7 +241,7 @@ async function initWithViewer(viewerInstance) {
   try {
     manager.value = viewerInstance;
 
-    const data = await manager.value.getReductionData("umap");
+    const data = await manager.value.getReductionData();
     umapData.value = data;
 
     // Extract metadata columns using config

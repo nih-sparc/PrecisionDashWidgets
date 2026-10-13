@@ -34,6 +34,7 @@ export function useSharedDataEngine({ dataUrl, config }) {
       const cfg = configRef.value;
       if (cfg?.embeddings) {
         engineConfig.embeddings = cfg.embeddings;
+        engineConfig.default_embedding = cfg.default_embedding;
       }
 
       const v = new UMAPGeneViewer(url, engineConfig);

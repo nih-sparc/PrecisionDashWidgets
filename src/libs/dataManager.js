@@ -4,6 +4,7 @@ export class UMAPGeneViewer {
   constructor(basePath = "/data", config = {}) {
     this.basePath = basePath;
     this.config = config;
+    this.manifest = null;
     this.db = null;
     this.conn = null;
     this.reductions = new Map(); // key → merged data array
@@ -54,6 +55,11 @@ export class UMAPGeneViewer {
   }
 
   async loadEssentialData() {
+    // Without embeddings from config, read them from the dataset's manifest
+    if (!this.config?.embeddings?.length) {
+      await this._loadManifest();
+    }
+
     // Build the list of reduction files from config or defaults
     const reductionFiles = this._getReductionFiles();
 
@@ -162,17 +168,36 @@ export class UMAPGeneViewer {
     }
   }
 
+  /** Fetch manifest.json next to the data files. Optional: older datasets have none. */
+  async _loadManifest() {
+    try {
+      const response = await fetch(this._buildUrl("manifest.json"));
+      if (response.ok) this.manifest = await response.json();
+    } catch (error) {
+      console.log("manifest.json not available:", error.message);
+    }
+  }
+
+  get embeddings() {
+    return this.config?.embeddings || this.manifest?.embeddings || null;
+  }
+
   /** Build list of reduction parquet files from config embeddings or defaults. */
   _getReductionFiles() {
-    const embeddings = this.config?.embeddings;
+    const embeddings = this.embeddings;
 
     if (embeddings && embeddings.length > 0) {
-      return embeddings.map((emb) => ({
-        name: `${emb.key}.parquet`,
-        path: this._buildUrl(emb.file || `${emb.key}_complete.parquet`),
-        required: emb.required !== false,
-        reductionKey: emb.key,
-      }));
+      // Multiome manifests list the default embedding twice (its own file and
+      // umap_complete.parquet) under the same key; load it once
+      const seen = new Set();
+      return embeddings
+        .filter((emb) => !seen.has(emb.key) && seen.add(emb.key))
+        .map((emb) => ({
+          name: `${emb.key}.parquet`,
+          path: this._buildUrl(emb.file || `${emb.key}_complete.parquet`),
+          required: emb.required !== false,
+          reductionKey: emb.key,
+        }));
     }
 
     // Default: umap (required) + tsne (optional)
@@ -192,7 +217,16 @@ export class UMAPGeneViewer {
     ];
   }
 
-  async getReductionData(reductionType = "umap") {
+  /** Reduction to show first: the dataset's default (WNN for multiome), else umap. */
+  get defaultReduction() {
+    const preferred =
+      this.config?.default_embedding || this.manifest?.default_embedding;
+    if (preferred && this.reductions.has(preferred)) return preferred;
+    if (this.reductions.has("umap")) return "umap";
+    return this.reductions.keys().next().value ?? null;
+  }
+
+  async getReductionData(reductionType = this.defaultReduction) {
     const data = this.reductions.get(reductionType);
     if (!data) {
       throw new Error(`Reduction "${reductionType}" not available`);
@@ -203,6 +237,48 @@ export class UMAPGeneViewer {
   /** Get all available reduction keys. */
   getAvailableReductions() {
     return Array.from(this.reductions.keys());
+  }
+
+  /**
+   * Available reductions as { key, label }, ordered RNA, ATAC, WNN, then others.
+   * Labels come from the manifest entry's `label`, else its file name / key.
+   */
+  getReductionOptions() {
+    const order = ["RNA", "ATAC", "WNN", "UMAP", "tSNE"];
+    const rank = (label) => {
+      const i = order.indexOf(label);
+      return i === -1 ? order.length : i;
+    };
+    return this.getAvailableReductions()
+      .map((key) => ({ key, label: this.getReductionLabel(key) }))
+      .sort((a, b) => rank(a.label) - rank(b.label));
+  }
+
+  getReductionLabel(key) {
+    const emb = this._getEmbedding(key);
+    if (emb?.label) return emb.label;
+    // File name first: a multiome RNA UMAP can be keyed plain "umap"
+    // but is written to rna_umap_complete.parquet
+    const name = `${emb?.file || ""} ${key}`.toLowerCase();
+    if (name.includes("wnn")) return "WNN";
+    if (name.includes("atac")) return "ATAC";
+    if (name.includes("rna")) return "RNA";
+    if (name.includes("tsne")) return "tSNE";
+    if (name.includes("umap")) return "UMAP";
+    return key;
+  }
+
+  /** [x, y] coordinate column names for a reduction. */
+  getReductionAxes(key) {
+    const columns = this._getEmbedding(key)?.columns?.filter(
+      (c) => c !== "cell_id"
+    );
+    if (columns?.length >= 2) return [columns[0], columns[1]];
+    return key === "tsne" ? ["tsne_1", "tsne_2"] : ["umap_1", "umap_2"];
+  }
+
+  _getEmbedding(key) {
+    return this.embeddings?.find((emb) => emb.key === key) || null;
   }
 
   hasReduction(key) {

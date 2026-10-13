@@ -16,6 +16,11 @@
       <div class="filter-placeholder">
         <!-- Filter will go here -->
       </div>
+      <!-- One cell map for both panels -->
+      <div v-if="reductionOptions.length > 1" class="reduction-bar">
+        <span class="label">Cell map:</span>
+        <ReductionToggle v-model="selectedReduction" :options="reductionOptions" />
+      </div>
       <div class="both-pannels">
         <!-- Left Panel: Metadata UMAP -->
         <div class="panel">
@@ -190,6 +195,7 @@ import * as d3 from "d3";
 import createRegl from "regl";
 import { useDataEngine, useDatasetActiveConfig } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
+import ReductionToggle from "../shared/ReductionToggle.vue";
 import { getMetadataColumns, getCategoricalColumns, getExternalLink } from "../../config/datasetConfig.js";
 
 // Props
@@ -232,6 +238,8 @@ const isLegendAnimating = ref(false);
 const loading = ref(true);
 const error = ref(null);
 const umapData = shallowRef([]);
+const reductionOptions = ref([]);
+const selectedReduction = ref(null);
 
 // Left panel (metadata)
 const metadataColumns = ref([]);
@@ -273,6 +281,19 @@ watch(
     }
   }
 );
+watch(selectedReduction, async (newVal, oldVal) => {
+  // oldVal is null during init, which loads the data itself
+  if (!oldVal || !manager.value) return;
+  umapData.value = await manager.value.getReductionData(newVal);
+  // New coordinate space: reset the shared zoom on both panels
+  sharedZoom.value = d3.zoomIdentity;
+  for (const canvas of [leftCanvas.value, rightCanvas.value]) {
+    if (canvas) d3.select(canvas).property("__zoom", d3.zoomIdentity);
+  }
+  runWhenActive(renderMetadataUMAP);
+  runWhenActive(renderGeneUMAP);
+});
+
 watch(selectedMetadataColumn, (newVal) => {
   if (newVal) {
     emit("update:Vars", "selectedMetadataColumn", newVal);
@@ -384,7 +405,9 @@ async function initWithViewer(viewerInstance) {
   try {
     manager.value = viewerInstance;
 
-    const data = await manager.value.getReductionData("umap");
+    reductionOptions.value = manager.value.getReductionOptions();
+    selectedReduction.value = manager.value.defaultReduction;
+    const data = await manager.value.getReductionData(selectedReduction.value);
     umapData.value = data;
 
     // Extract metadata columns using config
@@ -934,10 +957,11 @@ async function renderMetadataUMAP() {
   );
 
   // Prepare points
+  const [xCol, yCol] = manager.value.getReductionAxes(selectedReduction.value);
   const points = umapData.value.map((d) => ({
     ...d,
-    x: d.umap_1,
-    y: d.umap_2,
+    x: d[xCol],
+    y: d[yCol],
     color: colorScale(d[selectedMetadataColumn.value]) || "#cccccc",
     opacity: 0.8,
   }));
@@ -1485,6 +1509,7 @@ async function renderGeneUMAP() {
     const allExpr = geneData.map((d) => d.expression);
     const maxExpr = Math.max(...allExpr);
 
+    const [xCol, yCol] = manager.value.getReductionAxes(selectedReduction.value);
     const points = umapData.value.map((d) => {
       const expr = exprMap.get(d.cell_id) || 0;
       const norm = maxExpr > 0 ? Math.min(expr / maxExpr, 1) : 0;
@@ -1496,8 +1521,8 @@ async function renderGeneUMAP() {
 
       return {
         ...d,
-        x: d.umap_1,
-        y: d.umap_2,
+        x: d[xCol],
+        y: d[yCol],
         expr,
         norm,
         color: `rgb(${r}, ${g}, ${b})`,
@@ -1841,6 +1866,13 @@ function formatValue(key, value) {
   font-size: 18px;
   font-weight: 600;
   color: #1a202c;
+}
+
+.reduction-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .filter-placeholder {

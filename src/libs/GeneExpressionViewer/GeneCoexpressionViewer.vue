@@ -5,18 +5,13 @@
       <div class="controls-panel">
         <div class="controls-header">
           <h3>Gene Co-expression Analysis</h3>
-          <div class="reduction-selector">
-            <label for="reduction-select">Visualization:</label>
-            <select
-              id="reduction-select"
+          <div v-if="reductionOptions.length > 1" class="reduction-selector">
+            <label>Cell map:</label>
+            <ReductionToggle
               v-model="selectedReduction"
+              :options="reductionOptions"
               :disabled="loading"
-            >
-              <option value="umap">UMAP</option>
-              <option value="tsne" :disabled="!hasTsne">
-                tSNE {{ !hasTsne ? "(not available)" : "" }}
-              </option>
-            </select>
+            />
           </div>
         </div>
 
@@ -377,6 +372,7 @@ import * as d3 from "d3";
 import createRegl from "regl";
 import { useDataEngine, useDatasetActiveConfig } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
+import ReductionToggle from "../shared/ReductionToggle.vue";
 
 // Props
 const props = defineProps({
@@ -411,8 +407,8 @@ const lastCanvasSize = ref({ w: 0, h: 0 });
 const loading = ref(true);
 const loadingMessage = ref("Initializing data viewer...");
 const error = ref(null);
-const selectedReduction = ref("umap");
-const hasTsne = ref(false);
+const selectedReduction = ref(null);
+const reductionOptions = ref([]);
 const gradientExpanded = ref(false);
 
 // Gene selection - internal state
@@ -512,7 +508,8 @@ async function initWithViewer(viewerInstance) {
   try {
     loadingMessage.value = "Loading data...";
     viewer.value = viewerInstance;
-    hasTsne.value = viewer.value.hasTsne();
+    reductionOptions.value = viewer.value.getReductionOptions();
+    selectedReduction.value = viewer.value.defaultReduction;
     await loadReductionData();
     loading.value = false;
     loadingMessage.value = "";
@@ -560,11 +557,13 @@ onBeforeUnmount(() => {
 });
 
 // Reactivity
-watch(selectedReduction, async () => {
-  if (!loading.value && reductionData.value.length > 0 && canVisualize.value) {
-    await loadReductionData();
-    await visualize();
-  }
+watch(selectedReduction, async (_, oldVal) => {
+  // oldVal is null during init, which loads the data itself
+  if (!oldVal || loading.value) return;
+  await loadReductionData();
+  // New coordinate space: drop the old zoom
+  if (chartCanvas.value) d3.select(chartCanvas.value).property("__zoom", d3.zoomIdentity);
+  if (canVisualize.value) runWhenActive(visualize);
 });
 
 watch(gradientExpanded, async (isExpanded) => {
@@ -683,6 +682,7 @@ async function renderChart() {
     return scaled.map(clamp255);
   };
 
+  const [xCol, yCol] = viewer.value.getReductionAxes(selectedReduction.value);
   const points = reductionData.value.map((cell) => {
     const expr1 = gene1ExprMap.get(cell.cell_id) || 0;
     const expr2 = gene2ExprMap.get(cell.cell_id) || 0;
@@ -746,8 +746,8 @@ async function renderChart() {
 
     return {
       ...cell,
-      x: selectedReduction.value === "umap" ? cell.umap_1 : cell.tsne_1,
-      y: selectedReduction.value === "umap" ? cell.umap_2 : cell.tsne_2,
+      x: cell[xCol],
+      y: cell[yCol],
       color,
       zIndex,
       opacity,
@@ -1325,25 +1325,6 @@ async function updateVisualization() {
   font-weight: 500;
   color: #64748b;
 }
-.reduction-selector select {
-  padding: 6px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 2px;
-  font-size: 13px;
-  background: white;
-  color: #1a202c;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.reduction-selector select:hover {
-  border-color: #cbd5e1;
-}
-.reduction-selector select:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
 .genes-section {
   padding: 8px;
 }
