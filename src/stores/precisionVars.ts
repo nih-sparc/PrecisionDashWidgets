@@ -8,6 +8,7 @@ export const usePrecisionStore = defineStore("precisionGlobalVars", () => {
   const selectedGene1 = ref<string | null>(null);
   const selectedGene2 = ref<string | null>(null);
   const selectedGeneX = ref<string | null>(null);
+  const selectedChromatinGene = ref<string | null>(null);
 
   function setSelectedGene(gene: string | null) {
     selectedGene.value = gene === "" ? null : gene;
@@ -26,6 +27,9 @@ export const usePrecisionStore = defineStore("precisionGlobalVars", () => {
   }
   function setSelectedGeneX(gene: string | null) {
     selectedGeneX.value = gene === "" ? null : gene;
+  }
+  function setSelectedChromatinGene(gene: string | null) {
+    selectedChromatinGene.value = gene === "" ? null : gene;
   }
 
   // Generic setter that handles all properties
@@ -46,6 +50,9 @@ export const usePrecisionStore = defineStore("precisionGlobalVars", () => {
       case "selectedGeneX":
         setSelectedGeneX(value);
         break;
+      case "selectedChromatinGene":
+        setSelectedChromatinGene(value);
+        break;
       default:
         console.warn(`Unknown selection key: ${key}`);
     }
@@ -57,11 +64,13 @@ export const usePrecisionStore = defineStore("precisionGlobalVars", () => {
     selectedGene1,
     selectedGene2,
     selectedGeneX,
+    selectedChromatinGene,
     setSelectedGene,
     setSelectedMetadataColumn,
     setSelectedGene1,
     setSelectedGene2,
     setSelectedGeneX,
+    setSelectedChromatinGene,
     setSelection,
   };
 });

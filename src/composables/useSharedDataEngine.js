@@ -36,6 +36,9 @@ export function useSharedDataEngine({ dataUrl, config }) {
         engineConfig.embeddings = cfg.embeddings;
         engineConfig.default_embedding = cfg.default_embedding;
       }
+      if (cfg?.chromatin) {
+        engineConfig.chromatin = cfg.chromatin;
+      }
 
       const v = new UMAPGeneViewer(url, engineConfig);
       await v.initialize();

@@ -468,4 +468,137 @@ export class UMAPGeneViewer {
   clearCache() {
     this.geneCache.clear();
   }
+
+  // ---- Chromatin (multiome only) ----
+  // Files are fetched on first use, so RNA-only datasets never pay for them.
+
+  get chromatinInfo() {
+    return this.config?.chromatin || this.manifest?.chromatin || null;
+  }
+
+  /** Load the chromatin files once. Resolves to { tracks, geneCoords, links } booleans. */
+  loadChromatin() {
+    if (!this._chromatinPromise) this._chromatinPromise = this._loadChromatin();
+    return this._chromatinPromise;
+  }
+
+  async _loadChromatin() {
+    const info = this.chromatinInfo;
+    const files = [
+      ["tracks", "chromatin_tracks.parquet", info?.has_tracks],
+      ["geneCoords", "gene_coordinates.parquet", info?.has_gene_coordinates],
+      ["links", "linked_peaks.parquet", info?.has_linked_peaks],
+    ];
+    const available = {};
+    await Promise.all(
+      files.map(async ([key, name, listed]) => {
+        // Skip files the manifest says are missing; without a manifest, try anyway
+        available[key] = listed === false ? false : await this._registerOptional(name);
+      })
+    );
+    return available;
+  }
+
+  async _registerOptional(name) {
+    try {
+      const response = await fetch(this._buildUrl(name));
+      if (!response.ok) return false;
+      const buffer = await response.arrayBuffer();
+      await this.db.registerFileBuffer(name, new Uint8Array(buffer));
+      return true;
+    } catch (error) {
+      console.log(`Optional file ${name} not available:`, error.message);
+      return false;
+    }
+  }
+
+  /** Gene location with exons as [[start, end], ...], or null if not annotated. */
+  async getGeneCoordinates(geneName) {
+    const rows = await this._query(`
+      SELECT gene_name, chrom, start, "end", strand, exon_starts, exon_ends
+      FROM "gene_coordinates.parquet"
+      WHERE UPPER(gene_name) = UPPER(${sqlString(geneName)})
+      LIMIT 1
+    `);
+    return rows.length ? toGeneModel(rows[0]) : null;
+  }
+
+  /** All annotated genes overlapping a region, for the gene model row. */
+  async getGenesInRegion(chrom, start, end) {
+    const rows = await this._query(`
+      SELECT gene_name, chrom, start, "end", strand, exon_starts, exon_ends
+      FROM "gene_coordinates.parquet"
+      WHERE chrom IN (${chromVariants(chrom)}) AND "end" >= ${start} AND start <= ${end}
+    `);
+    return rows.map(toGeneModel);
+  }
+
+  /** Groups that have a track (cell types), cached. */
+  async getChromatinGroups() {
+    if (!this._chromatinGroups) {
+      const rows = await this._query(
+        `SELECT DISTINCT cell_type FROM "chromatin_tracks.parquet"`
+      );
+      this._chromatinGroups = rows.map((r) => String(r.cell_type));
+    }
+    return this._chromatinGroups;
+  }
+
+  /** Per-cell-type peak signal in a region: [{ group, start, end, signal }]. */
+  async getChromatinSignal(chrom, start, end) {
+    const rows = await this._query(`
+      SELECT cell_type, position_start, position_end, signal_value
+      FROM "chromatin_tracks.parquet"
+      WHERE chrom IN (${chromVariants(chrom)})
+        AND position_end >= ${start} AND position_start <= ${end}
+    `);
+    return rows.map((r) => ({
+      group: String(r.cell_type),
+      start: Number(r.position_start),
+      end: Number(r.position_end),
+      signal: Number(r.signal_value),
+    }));
+  }
+
+  /** Peaks linked to a gene: [{ start, end, correlation }]. */
+  async getLinkedPeaks(geneName) {
+    const rows = await this._query(`
+      SELECT peak_start, peak_end, correlation
+      FROM "linked_peaks.parquet"
+      WHERE UPPER(gene_name) = UPPER(${sqlString(geneName)})
+    `);
+    return rows.map((r) => ({
+      start: Number(r.peak_start),
+      end: Number(r.peak_end),
+      correlation: r.correlation == null ? null : Number(r.correlation),
+    }));
+  }
+
+  async _query(sql) {
+    const result = await this.conn.query(sql);
+    return result.toArray().map((row) => row.toJSON());
+  }
+}
+
+function sqlString(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+// Peaks are named "chr1-..." but annotations may use "1"; match either
+function chromVariants(chrom) {
+  const bare = String(chrom).replace(/^chr/i, "");
+  return [bare, `chr${bare}`].map(sqlString).join(", ");
+}
+
+function toGeneModel(row) {
+  const starts = String(row.exon_starts || "").split(",").filter(Boolean).map(Number);
+  const ends = String(row.exon_ends || "").split(",").filter(Boolean).map(Number);
+  return {
+    name: row.gene_name,
+    chrom: String(row.chrom),
+    start: Number(row.start),
+    end: Number(row.end),
+    strand: row.strand,
+    exons: starts.map((s, i) => [s, ends[i]]).filter(([, e]) => Number.isFinite(e)),
+  };
 }
