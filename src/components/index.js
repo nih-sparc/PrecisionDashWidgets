@@ -6,6 +6,7 @@ export { default as SideBySide } from "./SideBySide/SideBySide.vue";
 export { default as GeneXDistribution } from "./GeneDistribution/GeneXDistribution.vue";
 export { default as ViolinPlot } from "./GeneDistribution/GeneXDistribution.vue";
 export { default as ChromatinAccessibility } from "./ChromatinAccessibility/ChromatinAccessibility.vue";
+export { default as LinkedPeaks } from "./LinkedPeaks/LinkedPeaks.vue";
 export { usePrecisionStore } from "../stores/precisionVars";
 export {
   useDashboardGlobalVars,

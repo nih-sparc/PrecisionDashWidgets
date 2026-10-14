@@ -9,6 +9,8 @@ export const usePrecisionStore = defineStore("precisionGlobalVars", () => {
   const selectedGene2 = ref<string | null>(null);
   const selectedGeneX = ref<string | null>(null);
   const selectedChromatinGene = ref<string | null>(null);
+  // Peak picked in the linked peaks table, shown in the chromatin view
+  const chromatinFocus = ref<{ gene: string; chrom: string; start: number; end: number } | null>(null);
 
   function setSelectedGene(gene: string | null) {
     selectedGene.value = gene === "" ? null : gene;
@@ -29,7 +31,16 @@ export const usePrecisionStore = defineStore("precisionGlobalVars", () => {
     selectedGeneX.value = gene === "" ? null : gene;
   }
   function setSelectedChromatinGene(gene: string | null) {
-    selectedChromatinGene.value = gene === "" ? null : gene;
+    const next = gene === "" ? null : gene;
+    // A focused peak belongs to one gene; drop it when the gene changes
+    if (chromatinFocus.value && chromatinFocus.value.gene.toUpperCase() !== next?.toUpperCase()) {
+      chromatinFocus.value = null;
+    }
+    selectedChromatinGene.value = next;
+  }
+  function setChromatinFocus(peak: { gene: string; chrom: string; start: number; end: number } | null) {
+    chromatinFocus.value = peak;
+    if (peak) selectedChromatinGene.value = peak.gene;
   }
 
   // Generic setter that handles all properties
@@ -65,12 +76,14 @@ export const usePrecisionStore = defineStore("precisionGlobalVars", () => {
     selectedGene2,
     selectedGeneX,
     selectedChromatinGene,
+    chromatinFocus,
     setSelectedGene,
     setSelectedMetadataColumn,
     setSelectedGene1,
     setSelectedGene2,
     setSelectedGeneX,
     setSelectedChromatinGene,
+    setChromatinFocus,
     setSelection,
   };
 });

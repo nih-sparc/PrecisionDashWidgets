@@ -476,27 +476,33 @@ export class UMAPGeneViewer {
     return this.config?.chromatin || this.manifest?.chromatin || null;
   }
 
-  /** Load the chromatin files once. Resolves to { tracks, geneCoords, links } booleans. */
-  loadChromatin() {
-    if (!this._chromatinPromise) this._chromatinPromise = this._loadChromatin();
-    return this._chromatinPromise;
+  /** Load all chromatin files. Resolves to { tracks, geneCoords, links } booleans. */
+  async loadChromatin() {
+    const [tracks, geneCoords, links] = await Promise.all([
+      this._loadChromatinFile("chromatin_tracks.parquet", "has_tracks"),
+      this._loadChromatinFile("gene_coordinates.parquet", "has_gene_coordinates"),
+      this._loadChromatinFile("linked_peaks.parquet", "has_linked_peaks"),
+    ]);
+    return { tracks, geneCoords, links };
   }
 
-  async _loadChromatin() {
-    const info = this.chromatinInfo;
-    const files = [
-      ["tracks", "chromatin_tracks.parquet", info?.has_tracks],
-      ["geneCoords", "gene_coordinates.parquet", info?.has_gene_coordinates],
-      ["links", "linked_peaks.parquet", info?.has_linked_peaks],
-    ];
-    const available = {};
-    await Promise.all(
-      files.map(async ([key, name, listed]) => {
-        // Skip files the manifest says are missing; without a manifest, try anyway
-        available[key] = listed === false ? false : await this._registerOptional(name);
-      })
-    );
-    return available;
+  /** Load only the linked peaks file (small), for views that don't need tracks. */
+  loadLinkedPeaks() {
+    return this._loadChromatinFile("linked_peaks.parquet", "has_linked_peaks");
+  }
+
+  // Each file is fetched once and shared by every view
+  _loadChromatinFile(name, manifestFlag) {
+    if (!this._chromatinFiles) this._chromatinFiles = new Map();
+    if (!this._chromatinFiles.has(name)) {
+      // Skip files the manifest says are missing; without a manifest, try anyway
+      const listed = this.chromatinInfo?.[manifestFlag];
+      this._chromatinFiles.set(
+        name,
+        listed === false ? Promise.resolve(false) : this._registerOptional(name)
+      );
+    }
+    return this._chromatinFiles.get(name);
   }
 
   async _registerOptional(name) {
@@ -574,10 +580,35 @@ export class UMAPGeneViewer {
     }));
   }
 
+  /** All links for a gene, with every column the file has. */
+  async getLinksForGene(geneName) {
+    const rows = await this._query(`
+      SELECT * FROM "linked_peaks.parquet"
+      WHERE UPPER(gene_name) = UPPER(${sqlString(geneName)})
+    `);
+    return rows.map((r) => ({
+      gene: String(r.gene_name),
+      chrom: String(r.peak_chrom),
+      start: Number(r.peak_start),
+      end: Number(r.peak_end),
+      correlation: toNumberOrNull(r.correlation),
+      zscore: toNumberOrNull(r.zscore),
+      pValue: toNumberOrNull(r.p_value),
+      linkType: r.link_type == null ? null : String(r.link_type),
+      distance: toNumberOrNull(r.distance_to_tss),
+      topCellType: r.top_cell_type == null ? null : String(r.top_cell_type),
+      topCellTypeSignal: toNumberOrNull(r.top_cell_type_signal),
+    }));
+  }
+
   async _query(sql) {
     const result = await this.conn.query(sql);
     return result.toArray().map((row) => row.toJSON());
   }
+}
+
+function toNumberOrNull(value) {
+  return value == null ? null : Number(value);
 }
 
 function sqlString(value) {

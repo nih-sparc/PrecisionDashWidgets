@@ -149,6 +149,8 @@ import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
 const props = defineProps({
   dataPath: { type: String, default: "/data" },
   gene: { type: String, default: null },
+  // Peak to show and highlight ({ gene, chrom, start, end }), e.g. from the linked peaks table
+  focus: { type: Object, default: null },
   config: { type: Object, default: null },
 });
 
@@ -182,6 +184,8 @@ const MARGIN = { top: 28, right: 20, bottom: 12, left: 140 };
 const TARGET_COLOR = "#667eea";
 const OTHER_GENE_COLOR = "#94a3b8";
 const LINK_COLOR = "#f59e0b";
+const FOCUS_COLOR = "#667eea";
+const FOCUS_PADDING = 2000;
 
 const plotSvg = ref(null);
 const plotContainer = ref(null);
@@ -211,6 +215,7 @@ const view = shallowRef(null);
 
 let searchTimeout = null;
 let resizeObserver = null;
+let loadSeq = 0;
 
 const linkSummary = computed(() => {
   const links = view.value?.links || [];
@@ -235,6 +240,20 @@ watch(
 watch(selectedGene, (newVal) => {
   if (newVal) emit("update:Vars", "selectedGene", newVal);
 });
+
+// A peak picked elsewhere: redraw if it's already in view, otherwise widen the region.
+// When the gene changes too, the gene watcher's load already includes the peak.
+watch(
+  () => props.focus,
+  () => {
+    const v = view.value;
+    if (!v || !manager.value) return;
+    const f = focusForGene(v.gene);
+    if (!f) return runWhenActive(draw);
+    if (f.start >= v.start && f.end <= v.end) runWhenActive(draw);
+    else runWhenActive(loadRegion);
+  }
+);
 
 watch(flank, () => {
   if (view.value) runWhenActive(loadRegion);
@@ -336,25 +355,39 @@ async function handleGeneSelect() {
   await loadRegion();
 }
 
+// The focused peak, if it belongs to this gene
+function focusForGene(gene) {
+  const f = props.focus;
+  if (!f || !gene || String(f.gene).toUpperCase() !== gene.name.toUpperCase()) return null;
+  const bare = (c) => String(c).replace(/^chr/i, "");
+  return bare(f.chrom) === bare(gene.chrom) ? f : null;
+}
+
 async function loadRegion() {
   if (!manager.value || !selectedGene.value || !available.value.geneCoords) return;
+  // Ignore results from an older request if the gene changed meanwhile
+  const seq = ++loadSeq;
   dataLoading.value = true;
   message.value = "";
   try {
     const gene = await manager.value.getGeneCoordinates(selectedGene.value);
+    if (seq !== loadSeq) return;
     if (!gene) {
       view.value = null;
       message.value = `No genome location found for ${selectedGene.value}.`;
       draw();
       return;
     }
-    const start = Math.max(0, gene.start - flank.value);
-    const end = gene.end + flank.value;
+    // Widen past the chosen region size if needed so a focused peak is visible
+    const f = focusForGene(gene);
+    const start = Math.max(0, Math.min(gene.start - flank.value, f ? f.start - FOCUS_PADDING : Infinity));
+    const end = Math.max(gene.end + flank.value, f ? f.end + FOCUS_PADDING : -Infinity);
     const [genes, signal, links] = await Promise.all([
       manager.value.getGenesInRegion(gene.chrom, start, end),
       manager.value.getChromatinSignal(gene.chrom, start, end),
       available.value.links ? manager.value.getLinkedPeaks(gene.name) : [],
     ]);
+    if (seq !== loadSeq) return;
     view.value = { gene, chrom: gene.chrom, start, end, genes, signal, links };
     if (!signal.length) message.value = "No accessible peaks in this region.";
     await nextTick();
@@ -363,7 +396,7 @@ async function loadRegion() {
     console.error("Failed to load chromatin region:", err);
     message.value = `Failed to load region: ${err.message}`;
   } finally {
-    dataLoading.value = false;
+    if (seq === loadSeq) dataLoading.value = false;
   }
 }
 
@@ -434,9 +467,30 @@ function draw() {
     .append("title")
     .text((l) => linkTooltip(v, l));
 
+  drawFocus(svg, x, clampX, linkRowTop, v);
   drawGeneModel(svg, lanes, x, clampX, v);
   drawTracks(svg, x, tracksTop, width, v);
   if (showLinks) drawLinkArcs(svg, x, clampX, linkRowTop, width, v, visibleLinks);
+}
+
+// Outline the peak picked in the linked peaks table
+function drawFocus(svg, x, clampX, bottom, v) {
+  const f = focusForGene(v.gene);
+  if (!f || f.end < v.start || f.start > v.end) return;
+  const x1 = clampX(f.start) - 3;
+  const width = Math.max(6, clampX(f.end) - clampX(f.start) + 6);
+  const g = svg.append("g").attr("class", "focus");
+  g.append("rect")
+    .attr("x", x1)
+    .attr("width", width)
+    .attr("y", MARGIN.top)
+    .attr("height", bottom - MARGIN.top)
+    .attr("fill", FOCUS_COLOR)
+    .attr("fill-opacity", 0.08)
+    .attr("stroke", FOCUS_COLOR)
+    .attr("stroke-width", 1.5)
+    .attr("stroke-dasharray", "4 3");
+  g.append("title").text(`Selected peak\n${v.chrom}:${formatBp(f.start)}–${formatBp(f.end)}`);
 }
 
 // Greedy packing so overlapping genes (and their labels) get separate rows
@@ -539,13 +593,15 @@ function drawTracks(svg, x, top, width, v) {
   const color = d3.scaleOrdinal(d3.schemeTableau10).domain(groups.value);
   const unit = signalMode.value === "normalized" ? "mean counts per cell" : "total counts";
 
+  // Row backgrounds go underneath everything so link and focus highlights stay visible
+  const backgrounds = svg.insert("g", ":first-child").attr("class", "track-backgrounds");
   const g = svg.append("g").attr("class", "tracks");
   groups.value.forEach((group, i) => {
     const trackTop = top + i * (TRACK_HEIGHT + TRACK_GAP);
     const baseline = trackTop + TRACK_HEIGHT;
     const row = g.append("g");
 
-    row
+    backgrounds
       .append("rect")
       .attr("x", MARGIN.left)
       .attr("y", trackTop)
