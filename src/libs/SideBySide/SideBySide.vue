@@ -16,30 +16,30 @@
       <div class="filter-placeholder">
         <!-- Filter will go here -->
       </div>
-      <!-- One cell map for both panels -->
-      <div v-if="reductionOptions.length > 1" class="reduction-bar">
-        <span class="label">Cell map:</span>
-        <ReductionToggle v-model="selectedReduction" :options="reductionOptions" />
-      </div>
       <div class="both-pannels">
         <!-- Left Panel: Metadata UMAP -->
         <div class="panel">
-          <div class="header">
-            <h3 class="title">Cell Metadata</h3>
-          </div>
-
           <div class="controls">
             <label class="label">
-              Select metadata:
-              <select
-                v-model="selectedMetadataColumn"
-                @change="renderMetadataUMAP"
-                class="select"
-              >
-                <option v-for="col in metadataColumns" :key="col" :value="col">
-                  {{ col }}
-                </option>
-              </select>
+              Select Cell Metadata:
+              <div class="gene-input-wrapper">
+                <select
+                  v-model="selectedMetadataColumn"
+                  @change="renderMetadataUMAP"
+                  class="select"
+                >
+                  <option v-for="col in metadataColumns" :key="col" :value="col">
+                    {{ col }}
+                  </option>
+                </select>
+                <!-- Cell map applies to both panels -->
+                <ReductionToggle
+                  v-model="selectedReduction"
+                  :options="reductionOptions"
+                  class="cell-map-toggle"
+                  title="Cell map (applies to both panels)"
+                />
+              </div>
             </label>
           </div>
 
@@ -47,12 +47,12 @@
             <canvas ref="leftCanvas"></canvas>
           </div>
 
+          <!-- Always rendered so the canvas above is sized with the legend's space already taken -->
           <div
-            v-if="metadataLegend.length > 0"
             class="legend"
             :class="{ 'legend-expanded': leftLegendExpanded }"
           >
-            <div class="legend-header">
+            <div v-if="metadataLegend.length > 0" class="legend-header">
               <div class="legend-title">Legend</div>
               <button
                 class="legend-toggle"
@@ -123,13 +123,9 @@
 
         <!-- Right Panel: Gene Expression UMAP -->
         <div class="panel">
-          <div class="header">
-            <h3 class="title">Assay RNA (Gene Expression)</h3>
-          </div>
-
           <div class="controls">
             <label class="label">
-              Select gene:
+              Select Assay RNA (Gene Expression):
               <div class="gene-input-wrapper">
                 <input
                   v-model="geneSearch"
@@ -165,9 +161,10 @@
             <canvas ref="rightCanvas"></canvas>
           </div>
 
-          <div v-if="selectedGene && !geneLoading" class="legend">
-            <div class="legend-title">Expression Level</div>
-            <div class="gradient-bar">
+          <!-- Always rendered so the canvas above is sized with the legend's space already taken -->
+          <div class="legend">
+            <div v-if="selectedGene && !geneLoading" class="legend-title">Expression Level</div>
+            <div v-if="selectedGene && !geneLoading" class="gradient-bar">
               <div class="gradient-fill"></div>
               <div class="gradient-labels">
                 <span>Low</span>
@@ -804,9 +801,9 @@ function drawLeftLabels(canvas, transform) {
     }
 
     // Calculate font size based on zoom, with limits
-    const baseFontSize = 12;
-    const minFontSize = 11;
-    const maxFontSize = 18;
+    const baseFontSize = 16;
+    const minFontSize = 16;
+    const maxFontSize = 22;
     // Direct scaling with zoom (no sqrt dampening)
     const fontSize = Math.round(
       Math.max(minFontSize, Math.min(maxFontSize, baseFontSize * tr.k))
@@ -1825,8 +1822,9 @@ function formatValue(key, value) {
 .both-pannels {
   display: flex;
   flex-direction: row;
-  gap: 24px;
-  height: 100%;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
   width: 100%;
   background: #f8fafc;
 }
@@ -1845,36 +1843,14 @@ function formatValue(key, value) {
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 2px;
-  padding: 24px;
+  padding: 12px 16px;
   min-height: 0;
   width: 50%;
-  height: auto;
+  box-sizing: border-box;
+  overflow: hidden;
   position: relative;
 }
 
-.header {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e2e8f0;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-.title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1a202c;
-}
-
-.reduction-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-}
 
 .filter-placeholder {
   height: 0;
@@ -1882,33 +1858,35 @@ function formatValue(key, value) {
   align-items: center;
   justify-content: center;
   color: #94a3b8;
-  font-size: 13px;
+  font-size: 16px;
   font-style: italic;
   width: 100%;
 }
 
 .controls {
   display: flex;
-  flex-direction: column;
-  height: 72px;
   flex-shrink: 0;
-  margin-top: 16px;
 }
 
 .label {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #64748b;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a202c;
+  white-space: nowrap;
 }
 
 .select {
+  flex: 1;
+  min-width: 0;
   padding: 10px 14px;
   border: 2px solid #e2e8f0;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   background: white;
   color: #1a202c;
   cursor: pointer;
@@ -1928,6 +1906,8 @@ function formatValue(key, value) {
 .gene-input-wrapper {
   display: flex;
   gap: 12px;
+  flex: 1;
+  min-width: 0;
 }
 
 .gene-input {
@@ -1935,7 +1915,7 @@ function formatValue(key, value) {
   padding: 10px 14px;
   border: 2px solid #e2e8f0;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   background: white;
   color: #1a202c;
   transition: all 0.2s;
@@ -1944,7 +1924,7 @@ function formatValue(key, value) {
 }
 
 .gene-input::placeholder {
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .gene-input:hover {
@@ -1957,13 +1937,22 @@ function formatValue(key, value) {
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
+.cell-map-toggle {
+  align-self: stretch;
+  border-radius: 2px;
+}
+.cell-map-toggle :deep(button) {
+  padding: 0 14px;
+  font-size: 16px;
+}
+
 .visualize-btn {
   padding: 10px 24px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -1993,8 +1982,7 @@ function formatValue(key, value) {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 16px;
-  height: 89%;
+  margin-top: 12px;
 }
 
 .canvas-container canvas {
@@ -2012,22 +2000,23 @@ function formatValue(key, value) {
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 2px;
-  padding: 16px;
-  height: 10%;
-  min-height: 80px;
+  padding: 10px 12px;
+  /* fixed, so the legend appearing never changes the canvas area */
+  height: 120px;
   flex-shrink: 0;
-  margin-top: 16px;
+  margin-top: 12px;
   overflow-y: auto;
   transition: all 0.3s ease;
   position: relative;
   z-index: 5;
+  box-sizing: border-box;
 }
 
 .legend-expanded {
   position: absolute;
-  bottom: 24px;
-  left: 24px;
-  right: 24px;
+  bottom: 12px;
+  left: 16px;
+  right: 16px;
   height: 60%;
   max-height: calc(100% - 200px);
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
@@ -2042,7 +2031,7 @@ function formatValue(key, value) {
 }
 
 .legend-title {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   color: #1a202c;
   text-transform: uppercase;
@@ -2057,7 +2046,7 @@ function formatValue(key, value) {
   padding: 4px 8px;
   cursor: pointer;
   color: #64748b;
-  font-size: 12px;
+  font-size: 16px;
   transition: all 0.2s;
   display: flex;
   align-items: center;
@@ -2076,7 +2065,7 @@ function formatValue(key, value) {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 16px;
   color: #64748b;
   cursor: pointer;
   padding: 4px;
@@ -2112,7 +2101,7 @@ function formatValue(key, value) {
 
 .legend-x {
   color: #64748b;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: bold;
   line-height: 1;
 }
@@ -2142,7 +2131,7 @@ function formatValue(key, value) {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   min-width: 200px;
   max-width: 300px;
-  font-size: 13px;
+  font-size: 16px;
   backdrop-filter: blur(8px);
   background: rgba(255, 255, 255, 0.98);
   line-height: 1.2;
@@ -2150,7 +2139,7 @@ function formatValue(key, value) {
 
 .tooltip-header {
   font-weight: 700;
-  font-size: 14px;
+  font-size: 16px;
   color: #1a202c;
   margin-bottom: 6px;
   padding-bottom: 6px;
@@ -2196,7 +2185,7 @@ function formatValue(key, value) {
 .gradient-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 16px;
   color: #64748b;
   font-weight: 500;
 }

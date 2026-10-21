@@ -36,7 +36,7 @@ const resolvedDataPath = computed(
 .proportion-plot-wrap {
   width: 100%;
   height: 100%;
-  padding: 20px;
+  padding: 0;
   background: white;
   box-sizing: border-box;
   overflow: hidden;

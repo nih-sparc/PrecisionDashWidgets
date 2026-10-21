@@ -24,10 +24,6 @@
 
     <!-- Main Dashboard -->
     <div v-else class="dashboard">
-      <div class="header">
-        <h3 class="title">Chromatin Accessibility</h3>
-      </div>
-
       <div class="content-layout">
         <!-- Controls -->
         <div class="controls">
@@ -102,7 +98,11 @@
             </div>
           </label>
 
-          <label class="checkbox-label" :class="{ disabled: !available.links }">
+          <label
+            class="checkbox-label"
+            :class="{ disabled: !available.links }"
+            :title="available.links ? '' : 'Linked peaks aren\'t available for this dataset'"
+          >
             <input
               v-model="highlightLinks"
               type="checkbox"
@@ -111,12 +111,6 @@
             />
             Highlight linked peaks
           </label>
-          <p v-if="!available.links" class="hint">
-            Linked peaks aren't available for this dataset.
-          </p>
-          <p v-else-if="view && highlightLinks" class="hint">
-            {{ linkSummary }}
-          </p>
         </div>
 
         <!-- Tracks -->
@@ -130,6 +124,7 @@
             <strong>{{ view.gene.name }}</strong>
             {{ view.chrom }}:{{ formatBp(view.start) }}–{{ formatBp(view.end) }}
             ({{ view.gene.strand === "-" ? "minus" : "plus" }} strand)
+            <span v-if="available.links && highlightLinks" class="link-summary">· {{ linkSummary }}</span>
           </div>
           <div class="svg-scroll">
             <svg ref="plotSvg" class="plot-svg"></svg>
@@ -179,9 +174,9 @@ const GROUP_OPTIONS = [
 
 const TRACK_HEIGHT = 34;
 const TRACK_GAP = 4;
-const GENE_LANE_HEIGHT = 26;
+const GENE_LANE_HEIGHT = 34;
 const LINK_ROW_HEIGHT = 60;
-const MARGIN = { top: 28, right: 20, bottom: 12, left: 140 };
+const MARGIN = { top: 34, right: 20, bottom: 12, left: 190 };
 const TARGET_COLOR = "#667eea";
 const OTHER_GENE_COLOR = "#94a3b8";
 const LINK_COLOR = "#f59e0b";
@@ -427,7 +422,7 @@ function draw() {
 
   const lanes = assignLanes(v.genes, x, v.gene.name);
   const geneRowHeight = Math.max(1, lanes.length) * GENE_LANE_HEIGHT;
-  const tracksTop = MARGIN.top + geneRowHeight + 10;
+  const tracksTop = MARGIN.top + geneRowHeight + 20;
   const tracksHeight = groups.value.length * (TRACK_HEIGHT + TRACK_GAP);
   const showLinks = highlightLinks.value && available.value.links;
   const linkRowTop = tracksTop + tracksHeight + 4;
@@ -445,9 +440,10 @@ function draw() {
     .call(
       d3
         .axisTop(x)
-        .ticks(Math.max(2, Math.floor((width - MARGIN.left) / 110)))
+        .ticks(Math.max(2, Math.floor((width - MARGIN.left) / 130)))
         .tickFormat((d) => `${(d / 1e6).toFixed(decimals)} Mb`)
-    );
+    )
+    .call((axis) => axis.selectAll("text").attr("font-size", 16));
 
   // Linked peak bands sit behind everything else
   const visibleLinks = showLinks
@@ -569,7 +565,7 @@ function drawGeneModel(svg, lanes, x, clampX, v) {
         .attr("x", labelX)
         .attr("y", mid - 9)
         .attr("text-anchor", labelX === MARGIN.left + 2 ? "start" : "end")
-        .attr("font-size", 11)
+        .attr("font-size", 16)
         .attr("font-weight", isTarget ? 700 : 400)
         .attr("fill", isTarget ? TARGET_COLOR : "#475569")
         .text(gene.name);
@@ -581,7 +577,7 @@ function drawGeneModel(svg, lanes, x, clampX, v) {
     .attr("x", MARGIN.left - 10)
     .attr("y", MARGIN.top + GENE_LANE_HEIGHT / 2 + 6)
     .attr("text-anchor", "end")
-    .attr("font-size", 12)
+    .attr("font-size", 16)
     .attr("font-weight", 600)
     .attr("fill", "#1a202c")
     .text("Genes");
@@ -622,9 +618,9 @@ function drawTracks(svg, x, top, width, v) {
     row
       .append("text")
       .attr("x", MARGIN.left - 10)
-      .attr("y", trackTop + TRACK_HEIGHT / 2 + 4)
+      .attr("y", trackTop + TRACK_HEIGHT / 2 + 6)
       .attr("text-anchor", "end")
-      .attr("font-size", 12)
+      .attr("font-size", 16)
       .attr("fill", "#1a202c")
       .text(truncate(group, 18))
       .append("title")
@@ -653,7 +649,7 @@ function drawTracks(svg, x, top, width, v) {
     .attr("x", width - MARGIN.right)
     .attr("y", top - 3)
     .attr("text-anchor", "end")
-    .attr("font-size", 11)
+    .attr("font-size", 16)
     .attr("fill", "#64748b")
     .text(`Scale: 0–${formatSignal(yMax)} ${unit} (same for all tracks)`);
 }
@@ -669,7 +665,7 @@ function drawLinkArcs(svg, x, clampX, top, width, v, links) {
     .attr("x", MARGIN.left - 10)
     .attr("y", baseline - 8)
     .attr("text-anchor", "end")
-    .attr("font-size", 12)
+    .attr("font-size", 16)
     .attr("font-weight", 600)
     .attr("fill", "#1a202c")
     .text("Links");
@@ -736,72 +732,56 @@ function formatSignal(value) {
   height: 100%;
   width: 100%;
   background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 2px;
-  padding: 24px;
+  padding: 12px 16px;
   box-sizing: border-box;
 }
 
-.header {
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e2e8f0;
-  flex-shrink: 0;
-}
 
-.title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1a202c;
-}
 
 .content-layout {
   display: flex;
-  gap: 24px;
+  flex-direction: column;
+  gap: 8px;
   flex: 1;
   min-height: 0;
-  padding-top: 16px;
 }
 
 .controls {
-  width: 20%;
-  min-width: 250px;
   display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  padding: 6px 10px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 2px;
   flex-shrink: 0;
-  overflow-y: auto;
-  box-sizing: border-box;
 }
 
 .label {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 13px;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
+  white-space: nowrap;
 }
 
 .gene-expression-label {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: #1a202c;
 }
 
 .select {
-  padding: 10px 14px;
-  border: 2px solid #e2e8f0;
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   background: white;
   color: #1a202c;
   cursor: pointer;
-  transition: all 0.2s;
 }
 
 .select:hover {
@@ -816,25 +796,23 @@ function formatSignal(value) {
 
 .gene-input-wrapper {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  gap: 6px;
 }
 
 .gene-input {
-  flex: 1;
-  padding: 10px 14px;
-  border: 2px solid #e2e8f0;
+  width: 130px;
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   background: white;
   color: #1a202c;
-  transition: all 0.2s;
   min-width: 0;
   box-sizing: border-box;
 }
 
 .gene-input::placeholder {
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .gene-input:hover {
@@ -848,16 +826,14 @@ function formatSignal(value) {
 }
 
 .visualize-btn {
-  padding: 10px 24px;
+  padding: 4px 12px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
 }
 
 .visualize-btn:hover:not(:disabled) {
@@ -875,20 +851,18 @@ function formatSignal(value) {
 
 .plot-type-toggle {
   display: flex;
-  gap: 8px;
+  gap: 0;
 }
 
 .toggle-btn {
-  flex: 1;
-  padding: 8px 16px;
+  padding: 3px 10px;
   background: white;
-  border: 2px solid #e2e8f0;
-  border-radius: 2px;
-  font-size: 13px;
+  border: 1px solid #cbd5e1;
+  margin-left: -1px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
   cursor: pointer;
-  transition: all 0.2s;
 }
 
 .toggle-btn:hover:not(:disabled) {
@@ -910,11 +884,12 @@ function formatSignal(value) {
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: 4px;
+  font-size: 16px;
   font-weight: 500;
-  color: #64748b;
+  color: #1a202c;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .checkbox-label.disabled {
@@ -931,7 +906,7 @@ function formatSignal(value) {
 
 .hint {
   margin: -12px 0 0;
-  font-size: 12px;
+  font-size: 16px;
   color: #64748b;
   line-height: 1.4;
 }
@@ -949,10 +924,14 @@ function formatSignal(value) {
 }
 
 .region-label {
-  padding: 8px 12px 0;
-  font-size: 13px;
+  padding: 6px 10px 0;
+  font-size: 16px;
   color: #475569;
   flex-shrink: 0;
+}
+
+.link-summary {
+  color: #64748b;
 }
 
 .region-label strong {
@@ -962,7 +941,7 @@ function formatSignal(value) {
 
 .plot-message {
   padding: 12px;
-  font-size: 13px;
+  font-size: 16px;
   color: #4b5563;
   flex-shrink: 0;
 }
@@ -1006,7 +985,7 @@ function formatSignal(value) {
 
 .empty-text {
   margin: 0;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.5;
   color: #64748b;
 }

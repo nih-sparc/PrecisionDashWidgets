@@ -3,18 +3,6 @@
     <!-- LEFT PANE: controls + stats -->
     <div class="viewer-left">
       <div class="controls-panel">
-        <div class="controls-header">
-          <h3>Gene Co-expression Analysis</h3>
-          <div v-if="reductionOptions.length > 1" class="reduction-selector">
-            <label>Cell map:</label>
-            <ReductionToggle
-              v-model="selectedReduction"
-              :options="reductionOptions"
-              :disabled="loading"
-            />
-          </div>
-        </div>
-
         <div class="genes-section">
           <div class="genes-input-group">
             <div class="gene-input-wrapper">
@@ -80,32 +68,41 @@
             </div>
           </div>
 
-          <button
-            @click="visualize"
-            :disabled="!canVisualize || loading"
-            class="visualize-btn"
-          >
-            <span v-if="loading"
-              ><span class="btn-spinner"></span>Loading...</span
+          <div class="action-row">
+            <button
+              @click="visualize"
+              :disabled="!canVisualize || loading"
+              class="visualize-btn"
             >
-            <span v-else>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                style="margin-right: 8px; vertical-align: -2px"
+              <span v-if="loading"
+                ><span class="btn-spinner"></span>Loading...</span
               >
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-              </svg>
-              Visualize Co-expression
-            </span>
-          </button>
+              <span v-else>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  style="margin-right: 8px; vertical-align: -2px"
+                >
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                Visualize Co-expression
+              </span>
+            </button>
+            <ReductionToggle
+              v-model="selectedReduction"
+              :options="reductionOptions"
+              :disabled="loading"
+              class="cell-map-toggle"
+              title="Cell map"
+            />
+          </div>
         </div>
       </div>
 
@@ -134,9 +131,7 @@
             >{{ gene1 }} expressing:</span
           >
           <span class="stat-value"
-            >{{ stats.gene1Expressing.toLocaleString() }} ({{
-              stats.gene1Pct
-            }}%)</span
+            >{{ genesPending ? "…" : `${stats.gene1Expressing.toLocaleString()} (${stats.gene1Pct}%)` }}</span
           >
         </div>
         <div class="stat-item">
@@ -144,9 +139,7 @@
             >{{ gene2 }} expressing:</span
           >
           <span class="stat-value"
-            >{{ stats.gene2Expressing.toLocaleString() }} ({{
-              stats.gene2Pct
-            }}%)</span
+            >{{ genesPending ? "…" : `${stats.gene2Expressing.toLocaleString()} (${stats.gene2Pct}%)` }}</span
           >
         </div>
         <div class="stat-item">
@@ -154,9 +147,7 @@
             >Co-expressing:</span
           >
           <span class="stat-value"
-            >{{ stats.coexpressing.toLocaleString() }} ({{
-              stats.coexpressPct
-            }}%)</span
+            >{{ genesPending ? "…" : `${stats.coexpressing.toLocaleString()} (${stats.coexpressPct}%)` }}</span
           >
         </div>
       </div>
@@ -170,7 +161,7 @@
           <p>{{ loadingMessage }}</p>
         </div>
 
-        <div v-else style="position: relative; width: 100%; height: 100%">
+        <div style="position: relative; width: 100%; height: 100%">
           <canvas ref="chartCanvas"></canvas>
 
           <!-- Floating Color Mixer Toggle (collapsed) -->
@@ -424,6 +415,8 @@ const gene2Suggestions = ref([]);
 const reductionData = shallowRef([]);
 const gene1Data = ref(null);
 const gene2Data = ref(null);
+// Genes chosen but their expression hasn't arrived yet
+const genesPending = computed(() => loading.value && !!viewer.value);
 
 // Colors
 const gene1Color = ref("#ff0000");
@@ -515,15 +508,19 @@ async function initWithViewer(viewerInstance) {
     loading.value = false;
     loadingMessage.value = "";
 
-    setupResizeObserver();
-
+    // Start loading the genes, then draw the map grey while they download
+    let genesReady = null;
     if (props.gene1 && props.gene2) {
       gene1.value = props.gene1;
       gene2.value = props.gene2;
       gene1Search.value = props.gene1;
       gene2Search.value = props.gene2;
-      await visualize();
+      genesReady = visualize();
     }
+    await nextTick();
+    if (!gene1Data.value) await renderChart();
+    setupResizeObserver();
+    await genesReady;
   } catch (err) {
     console.error("Failed to initialize:", err);
     error.value = `Failed to load data: ${err.message}. Please check that your data files are in the correct location.`;
@@ -616,11 +613,13 @@ async function visualize() {
     gene1.value = gene1Search.value;
     gene2.value = gene2Search.value;
 
-    loadingMessage.value = `Loading ${gene1.value} expression...`;
-    gene1Data.value = await viewer.value.getGeneExpression(gene1.value);
-
-    loadingMessage.value = `Loading ${gene2.value} expression...`;
-    gene2Data.value = await viewer.value.getGeneExpression(gene2.value);
+    loadingMessage.value = `Loading ${gene1.value} and ${gene2.value} expression...`;
+    const [data1, data2] = await Promise.all([
+      viewer.value.getGeneExpression(gene1.value),
+      viewer.value.getGeneExpression(gene2.value),
+    ]);
+    gene1Data.value = data1;
+    gene2Data.value = data2;
 
     loadingMessage.value = "Rendering visualization...";
     currentZoom.value = null;
@@ -659,17 +658,15 @@ async function renderChart() {
   await nextTick();
   if (!chartCanvas.value) throw new Error("Chart canvas is not available");
 
-  // Expression maps
-  const gene1ExprMap = new Map(
-    gene1Data.value.map((d) => [d.cell_id, d.expression])
-  );
-  const gene2ExprMap = new Map(
-    gene2Data.value.map((d) => [d.cell_id, d.expression])
-  );
+  // Expression maps (empty before the genes load, which draws the map grey)
+  const genes1 = gene1Data.value || [];
+  const genes2 = gene2Data.value || [];
+  const gene1ExprMap = new Map(genes1.map((d) => [d.cell_id, d.expression]));
+  const gene2ExprMap = new Map(genes2.map((d) => [d.cell_id, d.expression]));
 
   // Ranges
-  const allExpr1 = gene1Data.value.map((d) => d.expression);
-  const allExpr2 = gene2Data.value.map((d) => d.expression);
+  const allExpr1 = genes1.map((d) => d.expression);
+  const allExpr2 = genes2.map((d) => d.expression);
   const maxExpr1 = Math.max(...allExpr1);
   const maxExpr2 = Math.max(...allExpr2);
 
@@ -684,6 +681,11 @@ async function renderChart() {
   };
 
   const [xCol, yCol] = viewer.value.getReductionAxes(selectedReduction.value);
+  const cellTypeCol = activeConfig.value?.cellTypeColumn || "cell_type";
+  const [rBase, gBase, bBase] = rgb256(hexToRgb(noExpressionColor.value));
+  const [rG1, gG1, bG1] = rgb256(hexToRgb(gene1Color.value));
+  const [rG2, gG2, bG2] = rgb256(hexToRgb(gene2Color.value));
+  const [rCo, gCo, bCo] = rgb256(hexToRgb(coexpressColor.value));
   const points = reductionData.value.map((cell) => {
     const expr1 = gene1ExprMap.get(cell.cell_id) || 0;
     const expr2 = gene2ExprMap.get(cell.cell_id) || 0;
@@ -693,11 +695,6 @@ async function renderChart() {
 
     const hasGene1 = expr1 > threshold;
     const hasGene2 = expr2 > threshold;
-
-    const [rBase, gBase, bBase] = rgb256(hexToRgb(noExpressionColor.value));
-    const [rG1, gG1, bG1] = rgb256(hexToRgb(gene1Color.value));
-    const [rG2, gG2, bG2] = rgb256(hexToRgb(gene2Color.value));
-    const [rCo, gCo, bCo] = rgb256(hexToRgb(coexpressColor.value));
 
     let mixedR = rBase * (1 - norm1) * (1 - norm2);
     let mixedG = gBase * (1 - norm1) * (1 - norm2);
@@ -745,8 +742,9 @@ async function renderChart() {
       mixedB
     )})`;
 
+    // Keep a reference to the cell (for the tooltip) instead of copying its ~60 fields
     return {
-      ...cell,
+      cell,
       x: cell[xCol],
       y: cell[yCol],
       color,
@@ -757,7 +755,7 @@ async function renderChart() {
       norm1,
       norm2,
       cell_id: cell.cell_id,
-      cell_type: cell[activeConfig.value?.cellTypeColumn || "cell_type"] || "Unknown",
+      cell_type: cell[cellTypeCol] || "Unknown",
     };
   });
 
@@ -1215,9 +1213,10 @@ function getTooltipData(point) {
     "norm1",
     "norm2",
   ]);
-  Object.keys(point).forEach((k) => {
-    if (!exclude.has(k) && point[k] !== null && point[k] !== undefined)
-      data[k] = point[k];
+  const cell = point.cell || {};
+  Object.keys(cell).forEach((k) => {
+    if (!exclude.has(k) && cell[k] !== null && cell[k] !== undefined)
+      data[k] = cell[k];
   });
   return data;
 }
@@ -1301,31 +1300,6 @@ async function updateVisualization() {
   flex: 1;
   min-height: 0;
 }
-.controls-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 24px;
-  gap: 4px;
-  border-bottom: 1px solid #e2e8f0;
-  background: linear-gradient(180deg, #fafbfc 0%, #ffffff 100%);
-}
-.controls-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1a202c;
-}
-.reduction-selector {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.reduction-selector label {
-  font-size: 13px;
-  font-weight: 500;
-  color: #64748b;
-}
 .genes-section {
   padding: 8px;
 }
@@ -1347,7 +1321,7 @@ async function updateVisualization() {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
   min-height: 20px;
@@ -1358,13 +1332,13 @@ async function updateVisualization() {
 }
 .selected-gene {
   font-weight: 600;
-  font-size: 14px;
+  font-size: 16px;
 }
 .gene-input {
   padding: 10px 14px;
   border: 2px solid #e2e8f0;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   transition: all 0.2s;
   background: white;
   color: #1a202c;
@@ -1386,7 +1360,7 @@ async function updateVisualization() {
 }
 .gene-input::placeholder {
   color: #94a3b8;
-  font-size: 13px;
+  font-size: 16px;
 }
 .vs-separator {
   display: flex;
@@ -1395,10 +1369,26 @@ async function updateVisualization() {
   padding: 0 8px;
   flex-shrink: 0;
   color: #cbd5e1;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
+}
+
+.action-row {
+  display: flex;
+  gap: 8px;
+}
+.action-row .visualize-btn {
+  flex: 1;
+}
+.cell-map-toggle {
+  align-self: stretch;
+  border-radius: 2px;
+}
+.cell-map-toggle :deep(button) {
+  padding: 0 14px;
+  font-size: 16px;
 }
 
 .visualize-btn {
@@ -1410,7 +1400,7 @@ async function updateVisualization() {
   color: white;
   border: none;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -1475,7 +1465,7 @@ async function updateVisualization() {
   border-radius: 2px;
   color: #856404;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 16px;
   transition: all 0.2s;
 }
 .dismiss-btn:hover {
@@ -1491,7 +1481,7 @@ async function updateVisualization() {
   border-radius: 2px;
 }
 .stat-label {
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1519,13 +1509,31 @@ async function updateVisualization() {
   display: block;
 }
 
+/* Floats over the map, which is drawn grey while genes load */
 .chart-loading {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
   align-items: center;
-  height: 400px;
+  gap: 10px;
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  font-size: 16px;
   color: var(--text-secondary);
+}
+.chart-loading p {
+  margin: 0;
+}
+.chart-loading .small-spinner {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
 }
 .small-spinner {
   width: 40px;
@@ -1548,14 +1556,14 @@ async function updateVisualization() {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   min-width: 200px;
   max-width: 300px;
-  font-size: 13px;
+  font-size: 16px;
   backdrop-filter: blur(8px);
   background: rgba(255, 255, 255, 0.98);
   line-height: 1.2;
 }
 .tooltip-header {
   font-weight: 700;
-  font-size: 14px;
+  font-size: 16px;
   color: #1a202c;
   margin-bottom: 6px;
   padding-bottom: 6px;
@@ -1598,7 +1606,7 @@ async function updateVisualization() {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 500;
   flex-shrink: 0;
   min-width: 0;
@@ -1667,7 +1675,7 @@ async function updateVisualization() {
   padding: 4px;
   background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
   border-bottom: 1px solid #e2e8f0;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: #1a202c;
 }
@@ -1706,7 +1714,7 @@ async function updateVisualization() {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  font-size: 10px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
 }
@@ -1721,7 +1729,7 @@ async function updateVisualization() {
   background: white;
   padding: 2px 4px;
   border-radius: 2px;
-  font-size: 9px;
+  font-size: 16px;
 }
 .x-axis-label {
   position: absolute;
@@ -1733,11 +1741,11 @@ async function updateVisualization() {
   background: white;
   padding: 2px 4px;
   border-radius: 2px;
-  font-size: 9px;
+  font-size: 16px;
 }
 .axis-arrow {
   position: absolute;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: bold;
   color: #94a3b8;
   z-index: 5;
@@ -1771,11 +1779,6 @@ async function updateVisualization() {
 }
 
 @media (max-width: 768px) {
-  .controls-header {
-    flex-direction: column;
-    align-items: flex-start;
-    padding: 8px 20px;
-  }
   .genes-input-group {
     grid-template-columns: 1fr;
   }

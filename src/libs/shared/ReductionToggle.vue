@@ -42,7 +42,7 @@ defineEmits(["update:modelValue"]);
 
 .reduction-toggle button {
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
   background: white;

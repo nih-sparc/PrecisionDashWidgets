@@ -50,7 +50,7 @@ function handleVarsUpdate(key: string, value: string | null) {
 .linked-peaks-wrap {
   height: 100%;
   width: 100%;
-  padding: 20px;
+  padding: 0;
   background: white;
   box-sizing: border-box;
   overflow: hidden;

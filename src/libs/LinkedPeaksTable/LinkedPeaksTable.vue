@@ -24,13 +24,6 @@
 
     <!-- Main Dashboard -->
     <div v-else class="dashboard">
-      <div class="header">
-        <h3 class="title">Linked Regulatory Regions</h3>
-        <span v-if="prov.linksComputed" class="calc-badge header-badge" :title="methodNote">
-          Calculated
-        </span>
-      </div>
-
       <div class="content-layout">
         <!-- Controls -->
         <div class="controls">
@@ -60,7 +53,7 @@
           </label>
 
           <label class="label">
-            Minimum correlation (|r|): <strong class="value">{{ minAbsCorrelation.toFixed(2) }}</strong>
+            |r| ≥ <strong class="value">{{ minAbsCorrelation.toFixed(2) }}</strong>
             <input
               v-model.number="minAbsCorrelation"
               type="range"
@@ -72,7 +65,6 @@
           </label>
 
           <label class="label">
-            Direction:
             <div class="plot-type-toggle">
               <button
                 v-for="opt in DIRECTIONS"
@@ -87,9 +79,12 @@
             </div>
           </label>
 
-          <div class="label">
+          <div
+            class="label"
+            :title="links.length && !typesAvailable ? 'Link types aren\'t available for this dataset. Reprocess it to add them.' : ''"
+          >
             <span>
-              Link type:
+              Type:
               <span
                 v-if="columnInfo('link_type').computed"
                 class="calc-badge"
@@ -111,13 +106,10 @@
               />
               {{ t.label }}
             </label>
-            <p v-if="links.length && !typesAvailable" class="hint">
-              Link types aren't available for this dataset. Reprocess it to add them.
-            </p>
           </div>
 
           <label class="label">
-            Sort by:
+            Sort:
             <select v-model="sortBy" class="select">
               <option v-for="opt in SORT_OPTIONS" :key="opt.value" :value="opt.value">
                 {{ opt.label }}
@@ -176,8 +168,12 @@
                         :title="columnInfo('link_type').rule"
                       >Calc</span>
                     </th>
-                    <th @click="sortBy = 'distance'" :class="{ sorted: sortBy === 'distance' }">
-                      Distance to gene start
+                    <th
+                      @click="sortBy = 'distance'"
+                      :class="{ sorted: sortBy === 'distance' }"
+                      title="Distance from the gene start, in the gene's direction"
+                    >
+                      Distance
                       <span
                         v-if="columnInfo('distance_to_tss').computed"
                         class="calc-badge"
@@ -252,7 +248,17 @@
             </div>
           </template>
 
-          <p class="footnote">
+          <button
+            class="about-toggle"
+            :aria-expanded="showAbout"
+            :title="prov.known ? methodNote : ''"
+            @click="showAbout = !showAbout"
+          >
+            <span v-if="prov.linksComputed" class="calc-badge header-badge">Calculated</span>
+            How these links were calculated
+            <span class="chevron">{{ showAbout ? "▾" : "▸" }}</span>
+          </button>
+          <p v-if="showAbout" class="footnote">
             <template v-if="prov.known">
               <span v-if="anyComputed" class="calc-badge">Calc</span>
               {{ methodNote }}
@@ -326,6 +332,7 @@ const minAbsCorrelation = ref(0);
 const direction = ref("all");
 const selectedTypes = ref(LINK_TYPES.map((t) => t.value));
 const sortBy = ref("strength");
+const showAbout = ref(false);
 
 let searchTimeout = null;
 
@@ -490,58 +497,40 @@ function corrWidth(r) {
   height: 100%;
   width: 100%;
   background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 2px;
-  padding: 24px;
+  padding: 12px 16px;
   box-sizing: border-box;
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e2e8f0;
-  flex-shrink: 0;
-}
 
-.title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1a202c;
-}
 
 .content-layout {
   display: flex;
-  gap: 24px;
+  flex-direction: column;
+  gap: 8px;
   flex: 1;
   min-height: 0;
-  padding-top: 16px;
 }
 
 .controls {
-  width: 20%;
-  min-width: 250px;
   display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  padding: 6px 10px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 2px;
   flex-shrink: 0;
-  overflow-y: auto;
-  box-sizing: border-box;
 }
 
 .label {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 13px;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
+  white-space: nowrap;
 }
 
 .label .value {
@@ -549,16 +538,16 @@ function corrWidth(r) {
 }
 
 .gene-expression-label {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: #1a202c;
 }
 
 .select {
-  padding: 10px 14px;
-  border: 2px solid #e2e8f0;
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   background: white;
   color: #1a202c;
   cursor: pointer;
@@ -573,15 +562,15 @@ function corrWidth(r) {
 
 .gene-input-wrapper {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  gap: 6px;
 }
 
 .gene-input {
-  padding: 10px 14px;
-  border: 2px solid #e2e8f0;
+  width: 130px;
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   background: white;
   color: #1a202c;
   min-width: 0;
@@ -589,19 +578,18 @@ function corrWidth(r) {
 }
 
 .gene-input::placeholder {
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .visualize-btn {
-  padding: 10px 24px;
+  padding: 4px 12px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
 }
 
 .visualize-btn:disabled {
@@ -612,22 +600,21 @@ function corrWidth(r) {
 }
 
 .slider {
-  width: 100%;
+  width: 90px;
   accent-color: #667eea;
 }
 
 .plot-type-toggle {
   display: flex;
-  gap: 6px;
+  gap: 0;
 }
 
 .toggle-btn {
-  flex: 1;
-  padding: 7px 8px;
+  padding: 3px 10px;
   background: white;
-  border: 2px solid #e2e8f0;
-  border-radius: 2px;
-  font-size: 12px;
+  border: 1px solid #cbd5e1;
+  margin-left: -1px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
   cursor: pointer;
@@ -642,11 +629,12 @@ function corrWidth(r) {
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: 4px;
+  font-size: 16px;
   font-weight: 500;
   color: #1a202c;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .checkbox-label.disabled {
@@ -662,7 +650,7 @@ function corrWidth(r) {
 
 .hint {
   margin: 0;
-  font-size: 12px;
+  font-size: 16px;
   color: #64748b;
   line-height: 1.4;
 }
@@ -673,32 +661,32 @@ function corrWidth(r) {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-height: 0;
 }
 
 .summary {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
 .summary-item {
   flex: 1;
-  padding: 10px 14px;
+  padding: 4px 10px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 2px;
 }
 
 .summary-value {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: #1a202c;
 }
 
 .summary-label {
-  font-size: 12px;
+  font-size: 16px;
   color: #64748b;
 }
 
@@ -720,7 +708,7 @@ function corrWidth(r) {
 .links-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 16px;
   color: #1a202c;
 }
 
@@ -730,9 +718,9 @@ function corrWidth(r) {
   background: #f1f5f9;
   text-align: left;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 16px;
   color: #475569;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-bottom: 1px solid #e2e8f0;
   white-space: nowrap;
   cursor: pointer;
@@ -744,7 +732,7 @@ function corrWidth(r) {
 }
 
 .links-table td {
-  padding: 7px 10px;
+  padding: 4px 8px;
   border-bottom: 1px solid #f1f5f9;
   white-space: nowrap;
 }
@@ -764,7 +752,7 @@ function corrWidth(r) {
 
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
+  font-size: 16px;
 }
 
 .muted {
@@ -779,7 +767,7 @@ function corrWidth(r) {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 16px;
   font-weight: 600;
   background: #e2e8f0;
   color: #475569;
@@ -807,7 +795,7 @@ function corrWidth(r) {
 }
 
 .corr-bar-track {
-  width: 60px;
+  width: 40px;
   height: 6px;
   background: #f1f5f9;
   border-radius: 3px;
@@ -834,7 +822,7 @@ function corrWidth(r) {
   border-radius: 3px;
   background: #f5f3ff;
   color: #6d28d9;
-  font-size: 10px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 15px;
   vertical-align: middle;
@@ -842,13 +830,37 @@ function corrWidth(r) {
 }
 
 .header-badge {
-  font-size: 11px;
+  font-size: 16px;
   padding: 1px 7px;
+  margin-left: 0;
+}
+
+
+.about-toggle {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 16px;
+  color: #64748b;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.about-toggle:hover {
+  color: #1a202c;
+}
+
+.chevron {
+  font-size: 16px;
 }
 
 .footnote {
   margin: 0;
-  font-size: 12px;
+  font-size: 16px;
   color: #64748b;
   line-height: 1.5;
   flex-shrink: 0;
@@ -856,7 +868,7 @@ function corrWidth(r) {
 
 .plot-message {
   padding: 4px 2px;
-  font-size: 13px;
+  font-size: 16px;
   color: #4b5563;
 }
 
@@ -888,7 +900,7 @@ function corrWidth(r) {
 
 .empty-text {
   margin: 0;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.5;
   color: #64748b;
 }

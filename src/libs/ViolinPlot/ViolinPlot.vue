@@ -13,10 +13,6 @@
 
     <!-- Main Dashboard -->
     <div v-else class="dashboard">
-      <div class="header">
-        <h3 class="title">Gene Expression Distribution</h3>
-      </div>
-
       <div class="content-layout">
         <!-- Controls -->
         <div class="controls">
@@ -422,8 +418,8 @@ function drawViolinPlot(data) {
 
   // Dynamic bottom margin based on longest label rotated at -45°
   const maxLabelLength = Math.max(...data.map((d) => d.category.length));
-  const estimatedLabelHeight = Math.min(maxLabelLength * 5.5, 200) + 40;
-  const margin = { top: 40, right: 40, bottom: Math.max(80, estimatedLabelHeight), left: 80 };
+  const estimatedLabelHeight = Math.min(maxLabelLength * 6.5, 240) + 48;
+  const margin = { top: 60, right: 40, bottom: Math.max(80, estimatedLabelHeight), left: 92 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
 
@@ -648,7 +644,7 @@ function drawViolinPlot(data) {
         textEl
           .attr("transform", "rotate(-45)")
           .style("text-anchor", "end")
-          .style("font-size", "12px")
+          .style("font-size", "16px")
           .style("fill", "#667eea")
           .style("cursor", "pointer");
       }
@@ -657,21 +653,21 @@ function drawViolinPlot(data) {
     xAxisGroup.selectAll("text")
       .attr("transform", "rotate(-45)")
       .style("text-anchor", "end")
-      .style("font-size", "12px");
+      .style("font-size", "16px");
   }
 
   // Y axis
   g.append("g")
     .call(d3.axisLeft(yScale))
     .selectAll("text")
-    .style("font-size", "12px");
+    .style("font-size", "16px");
 
   // X axis label
   g.append("text")
     .attr("x", innerWidth / 2)
     .attr("y", innerHeight + margin.bottom - 10)
     .attr("text-anchor", "middle")
-    .style("font-size", "14px")
+    .style("font-size", "17px")
     .style("font-weight", "600")
     .text(selectedMetadataColumn.value);
 
@@ -681,9 +677,9 @@ function drawViolinPlot(data) {
   g.append("text")
     .attr("transform", "rotate(-90)")
     .attr("x", -innerHeight / 2)
-    .attr("y", -margin.left + 20)
+    .attr("y", -margin.left + 22)
     .attr("text-anchor", "middle")
-    .style("font-size", "14px")
+    .style("font-size", "17px")
     .style("font-weight", "600")
     .text(yLabel);
 
@@ -691,9 +687,9 @@ function drawViolinPlot(data) {
   svg
     .append("text")
     .attr("x", width / 2)
-    .attr("y", 20)
+    .attr("y", 26)
     .attr("text-anchor", "middle")
-    .style("font-size", "16px")
+    .style("font-size", "18px")
     .style("font-weight", "700")
     .text(`Violin Plot: ${yLabel} by ${selectedMetadataColumn.value}`);
 }
@@ -704,15 +700,15 @@ function plottedValues(values) {
 
 // "% expressing" above each group, so hiding zeros doesn't hide how many there were
 function drawExpressingLabel(g, xCenter, bandWidth, values) {
-  if (bandWidth < 24 || values.length === 0) return;
+  if (bandWidth < 40 || values.length === 0) return;
   const expressing = values.filter((v) => v > 0).length;
   const pct = Math.round((expressing / values.length) * 100);
 
   g.append("text")
     .attr("x", xCenter)
-    .attr("y", -6)
+    .attr("y", -8)
     .attr("text-anchor", "middle")
-    .style("font-size", "11px")
+    .style("font-size", "16px")
     .style("fill", "#4b5563")
     .text(`${pct}%`)
     .append("title")
@@ -831,23 +827,11 @@ function updateDataPoints() {
   height: 100%;
   width: 100%;
   background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 2px;
-  padding: 24px;
+  padding: 12px 16px;
+  box-sizing: border-box;
 }
 
-.header {
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e2e8f0;
-  flex-shrink: 0;
-}
 
-.title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1a202c;
-}
 
 .content-layout {
   display: flex;
@@ -873,14 +857,14 @@ function updateDataPoints() {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
   flex: 1;
 }
 
 .gene-expression-label {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: #1a202c;
 }
@@ -889,7 +873,7 @@ function updateDataPoints() {
   padding: 10px 14px;
   border: 2px solid #e2e8f0;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   background: white;
   color: #1a202c;
   cursor: pointer;
@@ -917,7 +901,7 @@ function updateDataPoints() {
   padding: 10px 14px;
   border: 2px solid #e2e8f0;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   background: white;
   color: #1a202c;
   transition: all 0.2s;
@@ -926,7 +910,7 @@ function updateDataPoints() {
 }
 
 .gene-input::placeholder {
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .gene-input:hover {
@@ -945,7 +929,7 @@ function updateDataPoints() {
   color: white;
   border: none;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -976,7 +960,7 @@ function updateDataPoints() {
   background: white;
   border: 2px solid #e2e8f0;
   border-radius: 2px;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
   cursor: pointer;
@@ -998,7 +982,7 @@ function updateDataPoints() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
   cursor: pointer;
@@ -1028,7 +1012,7 @@ function updateDataPoints() {
   position: absolute;
   top: 8px;
   left: 12px;
-  font-size: 13px;
+  font-size: 16px;
   color: #4b5563;
   z-index: 1;
 }
