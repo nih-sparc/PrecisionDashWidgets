@@ -3,6 +3,7 @@
   <div class="proportion-plot-wrap">
     <ProportionPlot
       :data-path="resolvedDataPath"
+      :config="props.config"
       @update:Vars="PrecisionVars.setSelection"
     />
   </div>
@@ -13,15 +14,13 @@ import { usePrecisionStore } from "../../stores/precisionVars";
 import ProportionPlot from "../../libs/ProportionPlot/ProportionPlot.vue";
 import { useDashboardGlobalVars } from "../../useGlobalVars";
 
-const DEFAULT_DATA_PATH =
-  "https://temp-precision-dashboard-data.s3.us-east-1.amazonaws.com/humandrg/v2";
-
 defineOptions({
   inheritAttrs: false,
 });
 
 const props = defineProps<{
   dataPath?: string;
+  config?: Record<string, any>;
 }>();
 
 const globalVars = useDashboardGlobalVars();
@@ -30,14 +29,14 @@ const resolvedDataPath = computed(
   () =>
     props.dataPath ??
     (globalVars ? unref(globalVars.services)?.s3Url : null) ??
-    DEFAULT_DATA_PATH
+    null
 );
 </script>
 <style scoped lang="scss">
 .proportion-plot-wrap {
   width: 100%;
   height: 100%;
-  padding: 20px;
+  padding: 0;
   background: white;
   box-sizing: border-box;
   overflow: hidden;

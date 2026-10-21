@@ -17,9 +17,11 @@ import { ElTooltip } from "element-plus";
 import { InfoFilled } from "@element-plus/icons-vue";
 import { DataExplorer} from "@pennsieve-viz/core"
 import { useDashboardGlobalVars } from '../../useGlobalVars'
+import { provideDuckDBStore } from '../../composables/useDuckDBStore.js'
 defineOptions({
     inheritAttrs: false
 })
+provideDuckDBStore()
 const globalVars = useDashboardGlobalVars() 
 const widgetName = ref('Data Explorer');
 const urlSrc = computed(() => unref(globalVars?.services)?.s3Url)

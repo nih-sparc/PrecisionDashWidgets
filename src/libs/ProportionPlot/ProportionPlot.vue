@@ -13,10 +13,6 @@
 
     <!-- Main Dashboard -->
     <div v-else class="dashboard">
-      <div class="header">
-        <h3 class="title">Proportion Plot</h3>
-      </div>
-
       <div class="content-layout">
         <!-- Controls -->
         <div class="controls">
@@ -63,7 +59,7 @@
 
         <!-- Plot + Legend -->
         <div class="plot-and-legend">
-          <div class="plot-container">
+          <div ref="plotContainer" class="plot-container">
             <div v-if="isLoading" class="loading-overlay">
               <div class="small-spinner"></div>
               <p>Computing proportions...</p>
@@ -103,28 +99,37 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from "vue";
+import { ref, shallowRef, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue";
 import * as d3 from "d3";
-import { UMAPGeneViewer } from "../dataManager";
+import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
+import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
+import { getMetadataColumns, getCategoricalColumns, getExternalLink } from "../../config/datasetConfig.js";
 
 // Props
 const props = defineProps({
   dataPath: { type: String, default: "/data" },
+  config: { type: Object, default: null },
 });
 
 // Emits
 const emit = defineEmits(["update:Vars"]);
 
+// Shared data engine + config
+const { runWhenActive, observeResize } = useKeepAliveGate();
+const injectedConfig = useDatasetActiveConfig();
+const activeConfig = computed(() => props.config || injectedConfig.value || {});
+
 // Refs
 const plotSvg = ref(null);
-const manager = ref(null);
+const plotContainer = ref(null);
+const manager = shallowRef(null);
 
 // State
 const loading = ref(true);
 const error = ref(null);
 const isLoading = ref(false);
 const message = ref("");
-const umapData = ref([]);
+const umapData = shallowRef([]);
 
 const metadataColumns = ref([]);
 const xCol = ref("");
@@ -134,46 +139,48 @@ const MAX_X_GROUPS = 100;
 const MAX_Y_CATS = 12;
 const OTHER_LABEL = "(other)";
 
-// Handle window resize
+// Redraw when the plot area changes size: window or widget resize, or the legend
+// below it filling in after a draw (which shrinks the plot area)
 let resizeTimeout = null;
+function redrawProportions() {
+  if (proportionData.value?.rows?.length > 0) {
+    drawPlot(proportionData.value);
+  }
+}
 const handleResize = () => {
   clearTimeout(resizeTimeout);
-  resizeTimeout = setTimeout(() => {
-    if (proportionData.value.length > 0) {
-      drawPlot(proportionData.value);
-    }
-  }, 100);
+  resizeTimeout = setTimeout(() => runWhenActive(redrawProportions), 100);
 };
+let plotResizeObserver = null;
+watch(plotContainer, (el) => {
+  plotResizeObserver?.disconnect();
+  plotResizeObserver = el ? observeResize(el, handleResize) : null;
+});
 
-const proportionData = ref([]);
+const proportionData = shallowRef([]);
 const legendItems = ref([]);
 const tooltipData = ref(null);
 const tooltipPos = ref({ x: 0, y: 0 });
 
-// Initialize
-onMounted(async () => {
-  window.addEventListener("resize", handleResize);
-
+// Initialize using shared viewer or fallback
+async function initWithViewer(viewerInstance) {
   try {
-    manager.value = new UMAPGeneViewer(props.dataPath);
-    await manager.value.initialize();
+    manager.value = viewerInstance;
 
-    const data = await manager.value.getReductionData("umap");
+    const data = await manager.value.getReductionData();
     umapData.value = data;
 
-    // Extract metadata columns (exclude coordinate columns)
+    // Extract metadata columns using config
     if (data.length > 0) {
       const sample = data[0];
-      const cols = Object.keys(sample).filter(
-        (key) =>
-          !["cell_id", "umap_1", "umap_2", "tsne_1", "tsne_2"].includes(key)
-      );
+      const cfg = activeConfig.value;
+      const cols = getCategoricalColumns(data, getMetadataColumns(sample, cfg, cfg), cfg);
       metadataColumns.value = cols;
 
       if (cols.length >= 2) {
-        xCol.value = cols.includes("Atlas_annotation")
-          ? "Atlas_annotation"
-          : cols[0];
+        const defaultCol = cfg?.defaultColorBy;
+        xCol.value =
+          defaultCol && cols.includes(defaultCol) ? defaultCol : cols[0];
         yCol.value = cols[1] !== xCol.value ? cols[1] : cols[0];
       } else if (cols.length === 1) {
         xCol.value = cols[0];
@@ -185,7 +192,6 @@ onMounted(async () => {
 
     await nextTick();
 
-    // Auto-plot if we have columns
     if (xCol.value && yCol.value) {
       await plot();
     }
@@ -194,10 +200,26 @@ onMounted(async () => {
     error.value = `Failed to load data: ${err.message}`;
     loading.value = false;
   }
+}
+
+onMounted(() => {
+  window.addEventListener("resize", handleResize);
+});
+
+// Shared engine: the provider's, or one per data URL shared with the other widgets
+useWidgetDataEngine({
+  dataPath: () => props.dataPath,
+  config: () => props.config,
+  onReady: initWithViewer,
+  onError: (message) => {
+    error.value = message;
+    loading.value = false;
+  },
 });
 
 onBeforeUnmount(() => {
   clearTimeout(resizeTimeout);
+  plotResizeObserver?.disconnect();
   window.removeEventListener("resize", handleResize);
 });
 
@@ -313,12 +335,12 @@ function drawPlot({ rows, xLevels, yLevels }) {
   const height = rect.height;
 
   const maxLabelLength = Math.max(...xLevels.map((x) => x.length));
-  const estimatedLabelHeight = Math.min(maxLabelLength * 5.5, 200) + 40;
+  const estimatedLabelHeight = Math.min(maxLabelLength * 6.5, 240) + 48;
   const margin = {
-    top: 48,
+    top: 52,
     right: 16,
     bottom: Math.max(80, estimatedLabelHeight),
-    left: 56,
+    left: 80,
   };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
@@ -390,50 +412,56 @@ function drawPlot({ rows, xLevels, yLevels }) {
     .attr("transform", `translate(0,${innerHeight})`)
     .call(d3.axisBottom(xScale));
 
-  const isAtlasAnnotation = xCol.value.toLowerCase() === 'atlas_annotation';
+  const cfg = activeConfig.value;
+  let hasLinks = false;
+  if (cfg?.externalLink) {
+    const testLink = getExternalLink(cfg, xCol.value, "test");
+    hasLinks = testLink !== null;
+  }
 
-  if (isAtlasAnnotation) {
-    // Wrap each tick text in an SVG <a> element linking to nervosensus
+  if (hasLinks) {
     xAxisGroup.selectAll(".tick").each(function () {
       const tick = d3.select(this);
       const textEl = tick.select("text");
       const label = textEl.text();
-      const href = `https://nervosensus.netlify.app/?view=cards&atlasannotation=${label}`;
+      const href = getExternalLink(cfg, xCol.value, label);
 
-      const link = tick.append("a")
-        .attr("href", href)
-        .attr("target", "_blank");
+      if (href) {
+        const link = tick.append("a")
+          .attr("href", href)
+          .attr("target", "_blank");
 
-      link.node().appendChild(textEl.node());
+        link.node().appendChild(textEl.node());
 
-      textEl
-        .attr("transform", "rotate(-45)")
-        .style("text-anchor", "end")
-        .style("font-size", "12px")
-        .style("fill", "#667eea")
-        .style("cursor", "pointer");
+        textEl
+          .attr("transform", "rotate(-45)")
+          .style("text-anchor", "end")
+          .style("font-size", "16px")
+          .style("fill", "#667eea")
+          .style("cursor", "pointer");
+      }
     });
   } else {
     xAxisGroup
       .selectAll("text")
       .attr("transform", "rotate(-45)")
       .style("text-anchor", "end")
-      .style("font-size", "12px");
+      .style("font-size", "16px");
   }
 
   // Y axis
   g.append("g")
     .call(d3.axisLeft(yScale).tickFormat(d3.format(".0%")))
     .selectAll("text")
-    .style("font-size", "12px");
+    .style("font-size", "16px");
 
   // Y axis label
   g.append("text")
     .attr("transform", "rotate(-90)")
     .attr("x", -innerHeight / 2)
-    .attr("y", -margin.left + 16)
+    .attr("y", -margin.left + 20)
     .attr("text-anchor", "middle")
-    .style("font-size", "14px")
+    .style("font-size", "17px")
     .style("font-weight", "600")
     .text("Proportion");
 
@@ -442,7 +470,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
     .attr("x", innerWidth / 2)
     .attr("y", innerHeight + margin.bottom - 10)
     .attr("text-anchor", "middle")
-    .style("font-size", "14px")
+    .style("font-size", "17px")
     .style("font-weight", "600")
     .text(xCol.value);
 
@@ -450,9 +478,9 @@ function drawPlot({ rows, xLevels, yLevels }) {
   svg
     .append("text")
     .attr("x", width / 2)
-    .attr("y", 24)
+    .attr("y", 28)
     .attr("text-anchor", "middle")
-    .style("font-size", "16px")
+    .style("font-size", "18px")
     .style("font-weight", "700")
     .text(`${yCol.value} proportions within ${xCol.value}`);
 
@@ -478,23 +506,11 @@ function drawPlot({ rows, xLevels, yLevels }) {
   height: 100%;
   width: 100%;
   background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 2px;
-  padding: 24px;
+  padding: 12px 16px;
+  box-sizing: border-box;
 }
 
-.header {
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e2e8f0;
-  flex-shrink: 0;
-}
 
-.title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1a202c;
-}
 
 .content-layout {
   display: flex;
@@ -521,7 +537,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
 }
@@ -530,7 +546,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
   padding: 10px 14px;
   border: 2px solid #e2e8f0;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   background: white;
   color: #1a202c;
   cursor: pointer;
@@ -553,7 +569,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
   color: white;
   border: none;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -572,7 +588,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
 }
 
 .pp-message {
-  font-size: 13px;
+  font-size: 16px;
   color: #4b5563;
 }
 
@@ -585,13 +601,13 @@ function drawPlot({ rows, xLevels, yLevels }) {
   pointer-events: none;
   z-index: 20;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  font-size: 13px;
+  font-size: 16px;
   max-width: 260px;
 }
 
 .pp-tooltip-header {
   font-weight: 700;
-  font-size: 13px;
+  font-size: 16px;
   color: #1a202c;
   margin-bottom: 6px;
   padding-bottom: 4px;
@@ -649,7 +665,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 16px;
   color: #374151;
 }
 

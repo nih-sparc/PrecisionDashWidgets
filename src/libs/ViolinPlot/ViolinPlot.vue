@@ -13,10 +13,6 @@
 
     <!-- Main Dashboard -->
     <div v-else class="dashboard">
-      <div class="header">
-        <h3 class="title">Gene Expression Distribution</h3>
-      </div>
-
       <div class="content-layout">
         <!-- Controls -->
         <div class="controls">
@@ -90,6 +86,11 @@
             />
             Show data points
           </label>
+
+          <label class="checkbox-label">
+            <input v-model="includeZeros" type="checkbox" class="checkbox" />
+            Include non-expressing cells (0)
+          </label>
         </div>
 
         <!-- Violin Plot Canvas -->
@@ -98,6 +99,7 @@
             <div class="small-spinner"></div>
             <p>Loading data...</p>
           </div>
+          <div v-if="groupLimitMessage" class="group-limit-message">{{ groupLimitMessage }}</div>
           <svg ref="violinSvg" class="violin-svg"></svg>
           <canvas ref="dataPointsCanvas" class="data-points-canvas"></canvas>
         </div>
@@ -107,30 +109,38 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
+import { ref, shallowRef, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import * as d3 from "d3";
-import { UMAPGeneViewer } from "../dataManager";
+import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
+import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
+import { getMetadataColumns, getCategoricalColumns, getExternalLink } from "../../config/datasetConfig.js";
 
 // Props
 const props = defineProps({
   dataPath: { type: String, default: "/data" },
   metadataColumn: { type: String, default: null },
   gene: { type: String, default: null },
+  config: { type: Object, default: null },
 });
 
 // Emits
 const emit = defineEmits(["update:Vars"]);
 
+// Shared data engine + config
+const { runWhenActive } = useKeepAliveGate();
+const injectedConfig = useDatasetActiveConfig();
+const activeConfig = computed(() => props.config || injectedConfig.value || {});
+
 // Refs
 const violinSvg = ref(null);
 const dataPointsCanvas = ref(null);
-const manager = ref(null);
+const manager = shallowRef(null);
 
 // State
 const loading = ref(true);
 const error = ref(null);
 const dataLoading = ref(false);
-const umapData = ref([]);
+const umapData = shallowRef([]);
 
 // X-axis (metadata)
 const metadataColumns = ref([]);
@@ -147,7 +157,14 @@ const plotType = ref("violin"); // 'violin' or 'box'
 const showDataPoints = ref(false);
 
 // Plot data
-const violinData = ref([]);
+const violinData = shallowRef([]);
+const groupLimitMessage = ref("");
+// scRNA data is mostly zeros, which flattens every violin into a spike at 0.
+// Off by default: shapes use expressing cells only, with % expressing labeled per group.
+const includeZeros = ref(false);
+
+// Safety cap if a high-cardinality column still reaches the x-axis
+const MAX_VIOLIN_GROUPS = 50;
 
 // Search timeout
 let searchTimeout = null;
@@ -159,7 +176,7 @@ watch(
     if (newVal && newVal !== selectedMetadataColumn.value) {
       selectedMetadataColumn.value = newVal;
       if (umapData.value.length > 0) {
-        updateViolin();
+        runWhenActive(updateViolin);
       }
     }
   }
@@ -172,7 +189,7 @@ watch(
       selectedGene.value = newVal;
       geneSearch.value = newVal;
       if (umapData.value.length > 0) {
-        renderViolinPlot();
+        runWhenActive(renderViolinPlot);
       }
     }
   }
@@ -190,7 +207,7 @@ watch(selectedGene, (newVal) => {
   }
 });
 
-watch(plotType, () => {
+watch([plotType, includeZeros], () => {
   if (violinData.value.length > 0) {
     drawViolinPlot(violinData.value);
     if (showDataPoints.value) {
@@ -201,48 +218,41 @@ watch(plotType, () => {
 
 // Handle window resize for both SVG and canvas
 let resizeTimeout = null;
+function redrawViolin() {
+  if (violinData.value.length > 0) {
+    drawViolinPlot(violinData.value);
+    if (showDataPoints.value) {
+      drawDataPoints(violinData.value);
+    }
+  }
+}
 const handleResize = () => {
   clearTimeout(resizeTimeout);
-  resizeTimeout = setTimeout(() => {
-    if (violinData.value.length > 0) {
-      drawViolinPlot(violinData.value);
-      if (showDataPoints.value) {
-        drawDataPoints(violinData.value);
-      }
-    }
-  }, 100);
+  resizeTimeout = setTimeout(() => runWhenActive(redrawViolin), 100);
 };
 
-// Initialize
-onMounted(async () => {
-  // Add resize listener for canvas
-  window.addEventListener("resize", handleResize);
-
+// Initialize using shared viewer or fallback
+async function initWithViewer(viewerInstance) {
   try {
-    manager.value = new UMAPGeneViewer(props.dataPath);
-    await manager.value.initialize();
+    manager.value = viewerInstance;
 
-    const data = await manager.value.getReductionData("umap");
+    const data = await manager.value.getReductionData();
     umapData.value = data;
 
-    // Extract metadata columns
+    // Extract metadata columns using config
     if (data.length > 0) {
       const sample = data[0];
-      const cols = Object.keys(sample).filter(
-        (key) =>
-          !["cell_id", "umap_1", "umap_2", "tsne_1", "tsne_2"].includes(key)
-      );
+      const cfg = activeConfig.value;
+      const cols = getCategoricalColumns(data, getMetadataColumns(sample, cfg, cfg), cfg);
       metadataColumns.value = cols;
 
       if (cols.length > 0) {
-        // Use prop if provided, otherwise default logic
         if (props.metadataColumn && cols.includes(props.metadataColumn)) {
           selectedMetadataColumn.value = props.metadataColumn;
         } else if (!selectedMetadataColumn.value) {
-          // Default to Atlas_annotations if available
-          selectedMetadataColumn.value = cols.includes("Atlas_annotation")
-            ? "Atlas_annotation"
-            : cols[0];
+          const defaultCol = cfg?.defaultColorBy;
+          selectedMetadataColumn.value =
+            defaultCol && cols.includes(defaultCol) ? defaultCol : cols[0];
         }
       }
     }
@@ -263,6 +273,21 @@ onMounted(async () => {
     error.value = `Failed to load data: ${err.message}`;
     loading.value = false;
   }
+}
+
+onMounted(() => {
+  window.addEventListener("resize", handleResize);
+});
+
+// Shared engine: the provider's, or one per data URL shared with the other widgets
+useWidgetDataEngine({
+  dataPath: () => props.dataPath,
+  config: () => props.config,
+  onReady: initWithViewer,
+  onError: (message) => {
+    error.value = message;
+    loading.value = false;
+  },
 });
 
 onBeforeUnmount(() => {
@@ -336,10 +361,24 @@ async function renderViolinPlot() {
     });
 
     // Convert to array format
-    const data = Array.from(grouped.entries()).map(([category, values]) => ({
+    let data = Array.from(grouped.entries()).map(([category, values]) => ({
       category: String(category),
       values: values,
     }));
+
+    // Keep the largest groups (in original order) so the plot stays responsive
+    groupLimitMessage.value = "";
+    if (data.length > MAX_VIOLIN_GROUPS) {
+      const keep = new Set(
+        data
+          .slice()
+          .sort((a, b) => b.values.length - a.values.length)
+          .slice(0, MAX_VIOLIN_GROUPS)
+          .map((d) => d.category)
+      );
+      groupLimitMessage.value = `Showing the ${MAX_VIOLIN_GROUPS} largest of ${data.length} ${selectedMetadataColumn.value} groups.`;
+      data = data.filter((d) => keep.has(d.category));
+    }
 
     violinData.value = data;
     await nextTick();
@@ -372,8 +411,8 @@ function drawViolinPlot(data) {
 
   // Dynamic bottom margin based on longest label rotated at -45°
   const maxLabelLength = Math.max(...data.map((d) => d.category.length));
-  const estimatedLabelHeight = Math.min(maxLabelLength * 5.5, 200) + 40;
-  const margin = { top: 40, right: 40, bottom: Math.max(80, estimatedLabelHeight), left: 80 };
+  const estimatedLabelHeight = Math.min(maxLabelLength * 6.5, 240) + 48;
+  const margin = { top: 60, right: 40, bottom: Math.max(80, estimatedLabelHeight), left: 92 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
 
@@ -422,10 +461,22 @@ function drawViolinPlot(data) {
     };
   }
 
+  // Shared with drawDataPoints so dots follow each violin's shape
+  const densities = new Map();
+  svg.property("__scales__", { xScale, yScale, margin, width, height, densities });
+
+  // Floor so small or tight groups still get a visible shape instead of a hairline
+  const [yMin, yMax] = yScale.domain();
+  const minBandwidth = (yMax - yMin) * 0.02 || 0.1;
+
   // Draw plots for each category
   data.forEach((d) => {
     const category = d.category;
-    const values = d.values.filter((v) => v != null && !isNaN(v));
+    const validValues = d.values.filter((v) => v != null && !isNaN(v));
+    const values = plottedValues(validValues);
+    const xCenter = xScale(category) + xScale.bandwidth() / 2;
+
+    drawExpressingLabel(g, xCenter, xScale.bandwidth(), validValues);
 
     if (values.length === 0) return;
 
@@ -440,9 +491,9 @@ function drawViolinPlot(data) {
 
     if (plotType.value === "violin") {
       // Calculate bandwidth using Silverman's rule of thumb
-      const std = d3.deviation(values);
+      const std = d3.deviation(values) || 0;
       const n = values.length;
-      const bandwidth = 1.06 * std * Math.pow(n, -1 / 5);
+      const bandwidth = Math.max(1.06 * std * Math.pow(n, -1 / 5), minBandwidth);
 
       // Generate density estimate
       const thresholds = yScale.ticks(50);
@@ -458,8 +509,7 @@ function drawViolinPlot(data) {
         .domain([0, maxDensity])
         .range([0, xScale.bandwidth() / 2]);
 
-      // Store scales on svg for later use by data points
-      svg.property("__scales__", { xScale, yScale, margin, width, height });
+      densities.set(category, { density, xNum });
 
       // Draw violin shape
       const area = d3
@@ -499,9 +549,6 @@ function drawViolinPlot(data) {
       // Box plot mode
       const boxWidth = Math.min(xScale.bandwidth() * 0.6, 80);
       const whiskerWidth = boxWidth * 0.5;
-
-      // Store scales on svg
-      svg.property("__scales__", { xScale, yScale, margin, width, height });
 
       // Draw whiskers (min to Q1, Q3 to max)
       g.append("line")
@@ -564,50 +611,56 @@ function drawViolinPlot(data) {
     .attr("transform", `translate(0,${innerHeight})`)
     .call(d3.axisBottom(xScale));
 
-  const isAtlasAnnotation = selectedMetadataColumn.value.toLowerCase() === 'atlas_annotation';
+  const cfg = activeConfig.value;
 
-  if (isAtlasAnnotation) {
-    // Wrap each tick text in an SVG <a> element linking to nervosensus
+  // Check if external links should be applied to x-axis ticks
+  let hasLinks = false;
+  if (cfg?.externalLink) {
+    const testLink = getExternalLink(cfg, selectedMetadataColumn.value, "test");
+    hasLinks = testLink !== null;
+  }
+
+  if (hasLinks) {
     xAxisGroup.selectAll(".tick").each(function () {
       const tick = d3.select(this);
       const textEl = tick.select("text");
       const label = textEl.text();
-      const href = `https://nervosensus.netlify.app/?view=cards&atlasannotation=${label}`;
+      const href = getExternalLink(cfg, selectedMetadataColumn.value, label);
 
-      // Create an <a> wrapper inside the tick
-      const link = tick.append("a")
-        .attr("href", href)
-        .attr("target", "_blank");
+      if (href) {
+        const link = tick.append("a")
+          .attr("href", href)
+          .attr("target", "_blank");
 
-      // Move the text element into the link
-      link.node().appendChild(textEl.node());
+        link.node().appendChild(textEl.node());
 
-      textEl
-        .attr("transform", "rotate(-45)")
-        .style("text-anchor", "end")
-        .style("font-size", "12px")
-        .style("fill", "#667eea")
-        .style("cursor", "pointer");
+        textEl
+          .attr("transform", "rotate(-45)")
+          .style("text-anchor", "end")
+          .style("font-size", "16px")
+          .style("fill", "#667eea")
+          .style("cursor", "pointer");
+      }
     });
   } else {
     xAxisGroup.selectAll("text")
       .attr("transform", "rotate(-45)")
       .style("text-anchor", "end")
-      .style("font-size", "12px");
+      .style("font-size", "16px");
   }
 
   // Y axis
   g.append("g")
     .call(d3.axisLeft(yScale))
     .selectAll("text")
-    .style("font-size", "12px");
+    .style("font-size", "16px");
 
   // X axis label
   g.append("text")
     .attr("x", innerWidth / 2)
     .attr("y", innerHeight + margin.bottom - 10)
     .attr("text-anchor", "middle")
-    .style("font-size", "14px")
+    .style("font-size", "17px")
     .style("font-weight", "600")
     .text(selectedMetadataColumn.value);
 
@@ -617,9 +670,9 @@ function drawViolinPlot(data) {
   g.append("text")
     .attr("transform", "rotate(-90)")
     .attr("x", -innerHeight / 2)
-    .attr("y", -margin.left + 20)
+    .attr("y", -margin.left + 22)
     .attr("text-anchor", "middle")
-    .style("font-size", "14px")
+    .style("font-size", "17px")
     .style("font-weight", "600")
     .text(yLabel);
 
@@ -627,11 +680,45 @@ function drawViolinPlot(data) {
   svg
     .append("text")
     .attr("x", width / 2)
-    .attr("y", 20)
+    .attr("y", 26)
     .attr("text-anchor", "middle")
-    .style("font-size", "16px")
+    .style("font-size", "18px")
     .style("font-weight", "700")
     .text(`Violin Plot: ${yLabel} by ${selectedMetadataColumn.value}`);
+}
+
+function plottedValues(values) {
+  return includeZeros.value ? values : values.filter((v) => v > 0);
+}
+
+// "% expressing" above each group, so hiding zeros doesn't hide how many there were
+function drawExpressingLabel(g, xCenter, bandWidth, values) {
+  if (bandWidth < 40 || values.length === 0) return;
+  const expressing = values.filter((v) => v > 0).length;
+  const pct = Math.round((expressing / values.length) * 100);
+
+  g.append("text")
+    .attr("x", xCenter)
+    .attr("y", -8)
+    .attr("text-anchor", "middle")
+    .style("font-size", "16px")
+    .style("fill", "#4b5563")
+    .text(`${pct}%`)
+    .append("title")
+    .text(
+      `${expressing.toLocaleString()} of ${values.length.toLocaleString()} cells express ${selectedGene.value}`
+    );
+}
+
+// Violin half-width at a given expression value, interpolated from the density curve
+function violinHalfWidthAt(value, density, xNum) {
+  const i = d3.bisector((d) => d[0]).left(density, value);
+  if (i <= 0) return xNum(density[0][1]);
+  if (i >= density.length) return xNum(density[density.length - 1][1]);
+  const [t0, d0] = density[i - 1];
+  const [t1, d1] = density[i];
+  const f = t1 === t0 ? 0 : (value - t0) / (t1 - t0);
+  return xNum(d0 + f * (d1 - d0));
 }
 
 // Draw data points as canvas overlay for better performance
@@ -648,7 +735,7 @@ function drawDataPoints(data) {
     return;
   }
 
-  const { xScale, yScale, margin, width, height } = scales;
+  const { xScale, yScale, margin, width, height, densities } = scales;
 
   // Set canvas size to match SVG
   const dpr = window.devicePixelRatio || 1;
@@ -672,12 +759,14 @@ function drawDataPoints(data) {
   // Draw all points
   data.forEach((d) => {
     const category = d.category;
-    const values = d.values.filter((v) => v != null && !isNaN(v));
+    const values = plottedValues(d.values.filter((v) => v != null && !isNaN(v)));
     if (values.length === 0) return;
 
     const x1 = xScale(category) + xScale.bandwidth() / 2;
     const jitterWidth = xScale.bandwidth() * 0.35;
     const color = colorScale(category);
+    // Violin mode: spread dots only as wide as the violin is at that height (sina plot)
+    const shape = plotType.value === "violin" ? densities?.get(category) : null;
 
     ctx.fillStyle = color;
     ctx.strokeStyle = "white";
@@ -685,7 +774,9 @@ function drawDataPoints(data) {
     ctx.globalAlpha = 0.4;
 
     values.forEach((value) => {
-      const x = x1 + (Math.random() - 0.5) * jitterWidth;
+      const x = shape
+        ? x1 + (Math.random() * 2 - 1) * violinHalfWidthAt(value, shape.density, shape.xNum)
+        : x1 + (Math.random() - 0.5) * jitterWidth;
       const y = yScale(value);
 
       ctx.beginPath();
@@ -729,23 +820,11 @@ function updateDataPoints() {
   height: 100%;
   width: 100%;
   background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 2px;
-  padding: 24px;
+  padding: 12px 16px;
+  box-sizing: border-box;
 }
 
-.header {
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e2e8f0;
-  flex-shrink: 0;
-}
 
-.title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1a202c;
-}
 
 .content-layout {
   display: flex;
@@ -771,14 +850,14 @@ function updateDataPoints() {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
   flex: 1;
 }
 
 .gene-expression-label {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: #1a202c;
 }
@@ -787,7 +866,7 @@ function updateDataPoints() {
   padding: 10px 14px;
   border: 2px solid #e2e8f0;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   background: white;
   color: #1a202c;
   cursor: pointer;
@@ -815,7 +894,7 @@ function updateDataPoints() {
   padding: 10px 14px;
   border: 2px solid #e2e8f0;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   background: white;
   color: #1a202c;
   transition: all 0.2s;
@@ -824,7 +903,7 @@ function updateDataPoints() {
 }
 
 .gene-input::placeholder {
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .gene-input:hover {
@@ -843,7 +922,7 @@ function updateDataPoints() {
   color: white;
   border: none;
   border-radius: 2px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -874,7 +953,7 @@ function updateDataPoints() {
   background: white;
   border: 2px solid #e2e8f0;
   border-radius: 2px;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
   cursor: pointer;
@@ -896,7 +975,7 @@ function updateDataPoints() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
   color: #64748b;
   cursor: pointer;
@@ -920,6 +999,15 @@ function updateDataPoints() {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.group-limit-message {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-size: 16px;
+  color: #4b5563;
+  z-index: 1;
 }
 
 .violin-svg {

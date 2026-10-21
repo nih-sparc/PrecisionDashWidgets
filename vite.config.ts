@@ -11,28 +11,9 @@ export default defineConfig({
     },
   },
   server: {
-    proxy: {
-      "/api2": {
-        target: "https://api2.pennsieve.io",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api2/, ""),
-        configure: (proxy) => {
-          proxy.on("proxyReq", (proxyReq) => {
-            proxyReq.removeHeader("cookie");
-          });
-        },
-      },
-      "/assets-proxy": {
-        target: "https://assets.pennsieve.io",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/assets-proxy/, ""),
-        configure: (proxy) => {
-          proxy.on("proxyReq", (proxyReq) => {
-            proxyReq.removeHeader("cookie");
-          });
-        },
-      },
-    },
+    // api2's CORS allowlist includes localhost:3000 but not Vite's default 5173
+    port: 3000,
+    strictPort: true,
   },
   build: {
     cssCodeSplit: false,
@@ -43,7 +24,9 @@ export default defineConfig({
       fileName: (format) => `precision-dashwidgets.${format}.js`,
     },
     rollupOptions: {
-      external: ["vue", "@aws-amplify/auth", "pinia", "element-plus"],
+      // core is a peer: the host app provides one shared copy. Its style.css is a separate
+      // module id, so it is still bundled into this lib's style.css.
+      external: ["vue", "@aws-amplify/auth", "pinia", "element-plus", "@pennsieve-viz/core"],
       output: {
         assetFileNames: (a) =>
           a.name?.endsWith(".css") ? "style.css" : "assets/[name][extname]",
