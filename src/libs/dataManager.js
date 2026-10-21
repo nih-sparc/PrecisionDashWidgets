@@ -1,38 +1,14 @@
 import * as duckdb from "@duckdb/duckdb-wasm";
-import { buildSignedUrl } from "@pennsieve-viz/core";
+import { buildSignedUrl, getSharedDuckDB } from "@pennsieve-viz/core";
 
-// DuckDB takes ~1 s to download and compile, so it can be started before the
-// dataset URL is known. The first viewer takes the preloaded instance; later
-// ones (e.g. after switching datasets) get a fresh one.
-let preloadedDuckDB = null;
+// Every viewer uses the page's one DuckDB (shared with other libraries through core) and
+// registers its files under its own prefix, so datasets never collide and a switch only
+// drops files instead of restarting DuckDB.
+let viewerCount = 0;
 
-async function createDuckDB() {
-  const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
-  const workerUrl = URL.createObjectURL(
-    new Blob([`importScripts("${bundle.mainWorker}");`], { type: "text/javascript" })
-  );
-  const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(workerUrl));
-  await db.instantiate(bundle.mainModule);
-  URL.revokeObjectURL(workerUrl);
-  return { db, conn: await db.connect() };
-}
-
-/** Start booting DuckDB now so it's ready when the data arrives. */
+/** Start booting the shared DuckDB now (~1 s) so it's ready when the data arrives. */
 export function preloadDuckDB() {
-  if (!preloadedDuckDB) {
-    const instance = createDuckDB();
-    preloadedDuckDB = instance;
-    // Only clear it if it's still the pending preload (a newer one may have started)
-    instance.catch(() => {
-      if (preloadedDuckDB === instance) preloadedDuckDB = null;
-    });
-  }
-}
-
-function takeDuckDB() {
-  const instance = preloadedDuckDB || createDuckDB();
-  preloadedDuckDB = null;
-  return instance;
+  getSharedDuckDB(duckdb).catch(() => {}); // a failure resurfaces when a viewer needs it
 }
 
 /**
@@ -66,7 +42,19 @@ export class UMAPGeneViewer {
     this._pendingReductions = new Map(); // key → promise, for maps loading in the background
     this._reductionListeners = new Set();
     this.geneCache = new Map();
-    this.loadedChunks = new Set();
+    this._prefix = `precision/${++viewerCount}/`;
+    this._files = new Set(); // registered names, dropped on dispose
+  }
+
+  /** This viewer's name for a data file in the shared DuckDB. */
+  _file(name) {
+    return this._prefix + name;
+  }
+
+  async _register(name, bytes) {
+    const file = this._file(name);
+    await this.db.registerFileBuffer(file, bytes);
+    this._files.add(file);
   }
 
   // Backward-compat accessors
@@ -92,10 +80,9 @@ export class UMAPGeneViewer {
       const timing = {};
       const files = this._startDownloads().then((f) => ((timing.downloads = since()), f));
       files.catch(() => {}); // surfaced by the await below
-      const { db, conn } = await takeDuckDB();
+      this.db = await getSharedDuckDB(duckdb);
+      this.conn = await this.db.connect();
       timing.duckdb = since();
-      this.db = db;
-      this.conn = conn;
 
       await this.loadEssentialData(await files);
       console.info(
@@ -109,15 +96,20 @@ export class UMAPGeneViewer {
     }
   }
 
-  /** Close the DuckDB connection and stop its worker. The viewer can't be used afterwards. */
+  /**
+   * Close this viewer's connection and drop its files from the shared DuckDB (which keeps
+   * running for other users). The viewer can't be used afterwards.
+   */
   async dispose() {
     this._reductionListeners.clear();
     const { conn, db } = this;
+    const files = [...this._files];
     this.conn = null;
     this.db = null;
+    this._files.clear();
     try {
       await conn?.close();
-      await db?.terminate();
+      for (const file of files) await db?.dropFile(file);
     } catch (error) {
       console.warn("[DataEngine] Error while shutting down DuckDB:", error);
     }
@@ -161,7 +153,7 @@ export class UMAPGeneViewer {
     await Promise.all(
       loaded
         .filter(({ buffer }) => buffer)
-        .map(({ file, buffer }) => this.db.registerFileBuffer(file.name, buffer))
+        .map(({ file, buffer }) => this._register(file.name, buffer))
     );
 
     const hasMetadataFile = loaded.some(({ file, buffer }) => file.name === "metadata.parquet" && buffer);
@@ -173,7 +165,7 @@ export class UMAPGeneViewer {
     // don't hold up gene queries on the shared DuckDB connection
     for (const rf of laterReductions) {
       const downloaded = this._fetchFile(rf).then(
-        (buffer) => buffer && this.db.registerFileBuffer(rf.name, buffer).then(() => true)
+        (buffer) => buffer && this._register(rf.name, buffer).then(() => true)
       );
       // Drop a map as soon as its download fails, so it never shows as an option
       downloaded.then(
@@ -228,7 +220,7 @@ export class UMAPGeneViewer {
     const cellMetadata = new Map();
     try {
       const file = hasMetadataFile ? "metadata.parquet" : "cells.parquet";
-      const result = await this.conn.query(`SELECT * FROM "${file}"`);
+      const result = await this.conn.query(`SELECT * FROM "${this._file(file)}"`);
       for (const row of tableToObjects(result)) {
         cellMetadata.set(row.cell_id, row);
       }
@@ -241,7 +233,7 @@ export class UMAPGeneViewer {
   /** Merge a reduction with cell metadata and store it in the reductions Map. */
   async _loadReduction(rf) {
     try {
-      const result = await this.conn.query(`SELECT * FROM "${rf.name}"`);
+      const result = await this.conn.query(`SELECT * FROM "${this._file(rf.name)}"`);
       const merged = tableToObjects(result, (row) =>
         Object.assign(row, this._cellMetadata.get(row.cell_id))
       );
@@ -404,7 +396,7 @@ export class UMAPGeneViewer {
     try {
       // First, check what columns are available
       const columnsResult = await this.conn.query(`
-        DESCRIBE "gene_stats.parquet"
+        DESCRIBE "${this._file("gene_stats.parquet")}"
       `);
 
       const columns = columnsResult.toArray().map((row) => row.toJSON());
@@ -420,7 +412,7 @@ export class UMAPGeneViewer {
 
       const result = await this.conn.query(`
         SELECT ${selectCols.join(", ")}
-        FROM "gene_stats.parquet"
+        FROM "${this._file("gene_stats.parquet")}"
         WHERE UPPER(gene_name) LIKE UPPER('%${query}%')
         ORDER BY mean_expr DESC
         LIMIT 50
@@ -443,7 +435,7 @@ export class UMAPGeneViewer {
       // Otherwise query directly
       try {
         const result = await this.conn.query(`
-                SELECT * FROM "metadata.parquet" WHERE cell_id = '${cellId}'
+                SELECT * FROM "${this._file("metadata.parquet")}" WHERE cell_id = '${cellId}'
             `);
         const rows = result.toArray();
         if (rows.length > 0) {
@@ -451,7 +443,7 @@ export class UMAPGeneViewer {
         }
       } catch (e) {
         const result = await this.conn.query(`
-                SELECT * FROM "cells.parquet" WHERE cell_id = '${cellId}'
+                SELECT * FROM "${this._file("cells.parquet")}" WHERE cell_id = '${cellId}'
             `);
         const rows = result.toArray();
         if (rows.length > 0) {
@@ -475,7 +467,7 @@ export class UMAPGeneViewer {
       // First, look up the gene ID from the gene name
       const geneIdResult = await this.conn.query(`
         SELECT gene_id
-        FROM "genes.parquet"
+        FROM "${this._file("genes.parquet")}"
         WHERE gene_name = '${geneName}'
       `);
 
@@ -489,7 +481,7 @@ export class UMAPGeneViewer {
       // Look up gene location
       const locationResult = await this.conn.query(`
         SELECT location, is_precomputed
-        FROM "gene_locations.parquet"
+        FROM "${this._file("gene_locations.parquet")}"
         WHERE gene_name = '${geneName}'
       `);
 
@@ -501,8 +493,6 @@ export class UMAPGeneViewer {
       const locationData = locationArray[0].toJSON();
       const location = locationData.location;
       const isPrecomputed = locationData.is_precomputed;
-
-      const startTime = performance.now();
 
       let geneData;
 
@@ -519,10 +509,10 @@ export class UMAPGeneViewer {
           "_"
         )}.parquet`;
 
-        await this.db.registerFileBuffer(tempFileName, new Uint8Array(buffer));
+        await this._register(tempFileName, new Uint8Array(buffer));
 
         const result = await this.conn.query(`
-          SELECT cell_id, expression FROM "${tempFileName}"
+          SELECT cell_id, expression FROM "${this._file(tempFileName)}"
         `);
 
         geneData = result.toArray().map((row) => row.toJSON());
@@ -534,14 +524,12 @@ export class UMAPGeneViewer {
 
         const result = await this.conn.query(`
           SELECT cell_id, expression
-          FROM "${chunkFileName}"
+          FROM "${this._file(chunkFileName)}"
           WHERE gene_id = ${geneId}
         `);
 
         geneData = result.toArray().map((row) => row.toJSON());
       }
-
-      const loadTime = performance.now() - startTime;
 
       // Cache it
       this.geneCache.set(geneName, geneData);
@@ -562,8 +550,7 @@ export class UMAPGeneViewer {
           throw new Error(`Failed to load chunk file: ${response.statusText}`);
         }
         const buffer = await response.arrayBuffer();
-        await this.db.registerFileBuffer(chunkFileName, new Uint8Array(buffer));
-        this.loadedChunks.add(chunkFileName);
+        await this._register(chunkFileName, new Uint8Array(buffer));
       })();
       // Let a failed download be retried
       load.catch(() => this._chunkLoads.delete(chunkFileName));
@@ -621,7 +608,7 @@ export class UMAPGeneViewer {
       const response = await fetch(this._buildUrl(name));
       if (!response.ok) return false;
       const buffer = await response.arrayBuffer();
-      await this.db.registerFileBuffer(name, new Uint8Array(buffer));
+      await this._register(name, new Uint8Array(buffer));
       return true;
     } catch (error) {
       console.log(`Optional file ${name} not available:`, error.message);
@@ -633,7 +620,7 @@ export class UMAPGeneViewer {
   async getGeneCoordinates(geneName) {
     const rows = await this._query(`
       SELECT gene_name, chrom, start, "end", strand, exon_starts, exon_ends
-      FROM "gene_coordinates.parquet"
+      FROM "${this._file("gene_coordinates.parquet")}"
       WHERE UPPER(gene_name) = UPPER(${sqlString(geneName)})
       LIMIT 1
     `);
@@ -644,7 +631,7 @@ export class UMAPGeneViewer {
   async getGenesInRegion(chrom, start, end) {
     const rows = await this._query(`
       SELECT gene_name, chrom, start, "end", strand, exon_starts, exon_ends
-      FROM "gene_coordinates.parquet"
+      FROM "${this._file("gene_coordinates.parquet")}"
       WHERE chrom IN (${chromVariants(chrom)}) AND "end" >= ${start} AND start <= ${end}
     `);
     return rows.map(toGeneModel);
@@ -654,7 +641,7 @@ export class UMAPGeneViewer {
   async getChromatinGroups() {
     if (!this._chromatinGroups) {
       const rows = await this._query(
-        `SELECT DISTINCT cell_type FROM "chromatin_tracks.parquet"`
+        `SELECT DISTINCT cell_type FROM "${this._file("chromatin_tracks.parquet")}"`
       );
       this._chromatinGroups = rows.map((r) => String(r.cell_type));
     }
@@ -665,7 +652,7 @@ export class UMAPGeneViewer {
   async getChromatinSignal(chrom, start, end) {
     const rows = await this._query(`
       SELECT cell_type, position_start, position_end, signal_value
-      FROM "chromatin_tracks.parquet"
+      FROM "${this._file("chromatin_tracks.parquet")}"
       WHERE chrom IN (${chromVariants(chrom)})
         AND position_end >= ${start} AND position_start <= ${end}
     `);
@@ -681,7 +668,7 @@ export class UMAPGeneViewer {
   async getLinkedPeaks(geneName) {
     const rows = await this._query(`
       SELECT peak_start, peak_end, correlation
-      FROM "linked_peaks.parquet"
+      FROM "${this._file("linked_peaks.parquet")}"
       WHERE UPPER(gene_name) = UPPER(${sqlString(geneName)})
     `);
     return rows.map((r) => ({
@@ -694,7 +681,7 @@ export class UMAPGeneViewer {
   /** All links for a gene, with every column the file has. */
   async getLinksForGene(geneName) {
     const rows = await this._query(`
-      SELECT * FROM "linked_peaks.parquet"
+      SELECT * FROM "${this._file("linked_peaks.parquet")}"
       WHERE UPPER(gene_name) = UPPER(${sqlString(geneName)})
     `);
     return rows.map((r) => ({

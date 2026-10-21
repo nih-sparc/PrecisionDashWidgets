@@ -280,8 +280,8 @@
 </template>
 
 <script setup>
-import { ref, shallowRef, computed, onMounted, onBeforeUnmount, watch } from "vue";
-import { useDataEngine, useDatasetActiveConfig, useServicesCloudfront } from "../../composables/useSharedDataEngine.js";
+import { ref, shallowRef, computed, onBeforeUnmount, watch } from "vue";
+import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
 import {
   LINK_TYPES,
   SORT_OPTIONS,
@@ -305,8 +305,6 @@ const props = defineProps({
 
 const emit = defineEmits(["update:Vars", "select-peak"]);
 
-const { viewer: sharedViewer, loading: engineLoading } = useDataEngine();
-const getCloudfront = useServicesCloudfront();
 const injectedConfig = useDatasetActiveConfig();
 const activeConfig = computed(() => props.config || injectedConfig.value || {});
 
@@ -387,22 +385,15 @@ async function initWithViewer(viewerInstance) {
   }
 }
 
-onMounted(async () => {
-  if (sharedViewer.value) {
-    await initWithViewer(sharedViewer.value);
-  } else if (!engineLoading.value) {
-    const { UMAPGeneViewer } = await import("../dataManager.js");
-    const v = new UMAPGeneViewer(props.dataPath, { ...(props.config || {}), getCloudfront });
-    await v.initialize();
-    await initWithViewer(v);
-  } else {
-    const unwatch = watch(sharedViewer, async (v) => {
-      if (v) {
-        unwatch();
-        await initWithViewer(v);
-      }
-    });
-  }
+// Shared engine: the provider's, or one per data URL shared with the other widgets
+useWidgetDataEngine({
+  dataPath: () => props.dataPath,
+  config: () => props.config,
+  onReady: initWithViewer,
+  onError: (message) => {
+    error.value = message;
+    loading.value = false;
+  },
 });
 
 onBeforeUnmount(() => {

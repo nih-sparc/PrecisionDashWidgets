@@ -101,7 +101,7 @@
 <script setup>
 import { ref, shallowRef, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue";
 import * as d3 from "d3";
-import { useDataEngine, useDatasetActiveConfig, useServicesCloudfront } from "../../composables/useSharedDataEngine.js";
+import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
 import { getMetadataColumns, getCategoricalColumns, getExternalLink } from "../../config/datasetConfig.js";
 
@@ -115,8 +115,6 @@ const props = defineProps({
 const emit = defineEmits(["update:Vars"]);
 
 // Shared data engine + config
-const { viewer: sharedViewer, loading: engineLoading } = useDataEngine();
-const getCloudfront = useServicesCloudfront();
 const { runWhenActive, observeResize } = useKeepAliveGate();
 const injectedConfig = useDatasetActiveConfig();
 const activeConfig = computed(() => props.config || injectedConfig.value || {});
@@ -204,24 +202,19 @@ async function initWithViewer(viewerInstance) {
   }
 }
 
-onMounted(async () => {
+onMounted(() => {
   window.addEventListener("resize", handleResize);
+});
 
-  if (sharedViewer.value) {
-    await initWithViewer(sharedViewer.value);
-  } else if (!engineLoading.value) {
-    const { UMAPGeneViewer } = await import("../dataManager.js");
-    const v = new UMAPGeneViewer(props.dataPath, { getCloudfront });
-    await v.initialize();
-    await initWithViewer(v);
-  } else {
-    const unwatch = watch(sharedViewer, async (v) => {
-      if (v) {
-        unwatch();
-        await initWithViewer(v);
-      }
-    });
-  }
+// Shared engine: the provider's, or one per data URL shared with the other widgets
+useWidgetDataEngine({
+  dataPath: () => props.dataPath,
+  config: () => props.config,
+  onReady: initWithViewer,
+  onError: (message) => {
+    error.value = message;
+    loading.value = false;
+  },
 });
 
 onBeforeUnmount(() => {
