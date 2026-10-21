@@ -237,6 +237,7 @@ const loading = ref(true);
 const error = ref(null);
 const umapData = shallowRef([]);
 const reductionOptions = ref([]);
+let stopReductionUpdates = null;
 const selectedReduction = ref(null);
 
 // Left panel (metadata)
@@ -282,7 +283,18 @@ watch(
 watch(selectedReduction, async (newVal, oldVal) => {
   // oldVal is null during init, which loads the data itself
   if (!oldVal || !manager.value) return;
-  umapData.value = await manager.value.getReductionData(newVal);
+  let data;
+  try {
+    data = await manager.value.getReductionData(newVal);
+  } catch (err) {
+    console.warn(`[SideBySide] Cell map "${newVal}" couldn't be shown:`, err.message);
+    reductionOptions.value = manager.value.getReductionOptions();
+    if (selectedReduction.value === newVal) selectedReduction.value = oldVal;
+    return;
+  }
+  // A slow first load can finish after a newer pick; keep the newest
+  if (selectedReduction.value !== newVal) return;
+  umapData.value = data;
   // New coordinate space: reset the shared zoom on both panels
   sharedZoom.value = d3.zoomIdentity;
   for (const canvas of [leftCanvas.value, rightCanvas.value]) {
@@ -404,6 +416,10 @@ async function initWithViewer(viewerInstance) {
     manager.value = viewerInstance;
 
     reductionOptions.value = manager.value.getReductionOptions();
+    stopReductionUpdates?.();
+    stopReductionUpdates = manager.value.onReductionsChange?.(() => {
+      reductionOptions.value = manager.value.getReductionOptions();
+    });
     selectedReduction.value = manager.value.defaultReduction;
     const data = await manager.value.getReductionData(selectedReduction.value);
     umapData.value = data;
@@ -470,6 +486,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  stopReductionUpdates?.();
   if (leftResizeObserver.value) leftResizeObserver.value.disconnect();
   if (rightResizeObserver.value) rightResizeObserver.value.disconnect();
 

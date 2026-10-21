@@ -1,4 +1,4 @@
-import { ref, shallowRef, markRaw, provide, inject, watch, isRef, toRef, unref } from "vue";
+import { ref, shallowRef, markRaw, provide, inject, watch, isRef, toRef, unref, onScopeDispose } from "vue";
 import { UMAPGeneViewer, preloadDuckDB } from "../libs/dataManager.js";
 import { DASHBOARD_GLOBAL_VARS_KEY } from "../useGlobalVars";
 
@@ -12,9 +12,13 @@ export const DATASET_CONFIG_KEY = Symbol("dataset-config");
  * `dataUrl` is the unsigned base path; signing comes from `getCloudfront`, read on
  * every fetch, so renewed credentials never rebuild the engine.
  *
- * @param {{ dataUrl: Ref<string|null>, config: Ref<object>, getCloudfront?: () => object|null }} options
+ * Pass `configLoading` (e.g. useDatasetConfig's `loading`) so the engine waits for
+ * the dataset's manifest and takes its embeddings from `config` instead of
+ * fetching manifest.json a second time.
+ *
+ * @param {{ dataUrl: Ref<string|null>, config: Ref<object>, configLoading?: Ref<boolean>, getCloudfront?: () => object|null }} options
  */
-export function useSharedDataEngine({ dataUrl, config, getCloudfront }) {
+export function useSharedDataEngine({ dataUrl, config, configLoading, getCloudfront }) {
   const dataUrlRef = isRef(dataUrl) ? dataUrl : toRef(dataUrl);
   const configRef = isRef(config) ? config : toRef(config);
 
@@ -25,42 +29,71 @@ export function useSharedDataEngine({ dataUrl, config, getCloudfront }) {
   // Boot DuckDB while the dataset URL is still being fetched
   preloadDuckDB();
 
+  // Bumped whenever the dataset changes, so a viewer that finishes loading for a
+  // dataset that's no longer selected is thrown away instead of shown
+  let request = 0;
+  let currentUrl; // dataset the current (or loading) viewer is for
+
+  function dropViewer() {
+    request++;
+    currentUrl = undefined;
+    viewer.value?.dispose();
+    viewer.value = null;
+  }
+
+  function engineConfig() {
+    const cfg = configRef.value;
+    return {
+      getCloudfront,
+      // Embeddings and chromatin settings from the manifest, when there is one
+      ...(cfg?.embeddings && { embeddings: cfg.embeddings, default_embedding: cfg.default_embedding }),
+      ...(cfg?.chromatin && { chromatin: cfg.chromatin }),
+    };
+  }
+
   async function createViewer(url) {
+    dropViewer();
+    currentUrl = url;
+    const id = request;
+    error.value = null;
     if (!url) {
-      viewer.value = null;
+      loading.value = false;
       return;
     }
 
     loading.value = true;
-    error.value = null;
-
+    const v = new UMAPGeneViewer(url, engineConfig());
     try {
-      const engineConfig = { getCloudfront };
-
-      // Pass embeddings from manifest/config to the data engine
-      const cfg = configRef.value;
-      if (cfg?.embeddings) {
-        engineConfig.embeddings = cfg.embeddings;
-        engineConfig.default_embedding = cfg.default_embedding;
-      }
-      if (cfg?.chromatin) {
-        engineConfig.chromatin = cfg.chromatin;
-      }
-
-      const v = new UMAPGeneViewer(url, engineConfig);
       await v.initialize();
+      if (id !== request) return v.dispose();
       viewer.value = markRaw(v);
     } catch (err) {
+      v.dispose();
+      if (id !== request) return;
       console.error("Failed to create shared data engine:", err);
       error.value = err.message;
-      viewer.value = null;
     } finally {
-      loading.value = false;
+      if (id === request) loading.value = false;
     }
   }
 
-  // Recreate viewer when dataUrl changes
-  watch(dataUrlRef, (url) => createViewer(url), { immediate: true });
+  // Recreate the viewer when the dataset changes. The old one is dropped right away;
+  // the new one is built once the dataset's config (manifest) has loaded.
+  watch(
+    () => [dataUrlRef.value, unref(configLoading) ?? false],
+    ([url, waitingForConfig]) => {
+      if (url === currentUrl) return;
+      if (waitingForConfig) {
+        dropViewer();
+        loading.value = !!url;
+        return;
+      }
+      createViewer(url);
+    },
+    { immediate: true }
+  );
+
+  onScopeDispose(dropViewer);
 
   // Provide to descendants
   provide(DATA_ENGINE_KEY, { viewer, loading, error });

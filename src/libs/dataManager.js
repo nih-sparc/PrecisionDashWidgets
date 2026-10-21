@@ -20,8 +20,12 @@ async function createDuckDB() {
 /** Start booting DuckDB now so it's ready when the data arrives. */
 export function preloadDuckDB() {
   if (!preloadedDuckDB) {
-    preloadedDuckDB = createDuckDB();
-    preloadedDuckDB.catch(() => (preloadedDuckDB = null));
+    const instance = createDuckDB();
+    preloadedDuckDB = instance;
+    // Only clear it if it's still the pending preload (a newer one may have started)
+    instance.catch(() => {
+      if (preloadedDuckDB === instance) preloadedDuckDB = null;
+    });
   }
 }
 
@@ -60,6 +64,7 @@ export class UMAPGeneViewer {
     this.conn = null;
     this.reductions = new Map(); // key → merged data array
     this._pendingReductions = new Map(); // key → promise, for maps loading in the background
+    this._reductionListeners = new Set();
     this.geneCache = new Map();
     this.loadedChunks = new Set();
   }
@@ -99,7 +104,22 @@ export class UMAPGeneViewer {
       );
     } catch (error) {
       console.error("Failed to initialize data manager:", error);
+      this.dispose();
       throw new Error(`Initialization failed: ${error.message}`);
+    }
+  }
+
+  /** Close the DuckDB connection and stop its worker. The viewer can't be used afterwards. */
+  async dispose() {
+    this._reductionListeners.clear();
+    const { conn, db } = this;
+    this.conn = null;
+    this.db = null;
+    try {
+      await conn?.close();
+      await db?.terminate();
+    } catch (error) {
+      console.warn("[DataEngine] Error while shutting down DuckDB:", error);
     }
   }
 
@@ -155,9 +175,31 @@ export class UMAPGeneViewer {
       const downloaded = this._fetchFile(rf).then(
         (buffer) => buffer && this.db.registerFileBuffer(rf.name, buffer).then(() => true)
       );
-      downloaded.catch(() => {});
+      // Drop a map as soon as its download fails, so it never shows as an option
+      downloaded.then(
+        (ok) => ok || this._dropReduction(rf.reductionKey, "file not found"),
+        (err) => this._dropReduction(rf.reductionKey, err.message)
+      );
       this._pendingReductions.set(rf.reductionKey, { rf, downloaded, parsed: null });
     }
+  }
+
+  /**
+   * Call `fn` when a background cell map turns out to be unavailable, so the
+   * map options can be refreshed. Returns an unsubscribe function.
+   */
+  onReductionsChange(fn) {
+    this._reductionListeners.add(fn);
+    return () => this._reductionListeners.delete(fn);
+  }
+
+  _dropReduction(key, reason) {
+    if (!this._pendingReductions.delete(key)) return;
+    console.warn(
+      `[DataEngine] Cell map "${this.getReductionLabel(key)}" (${key}) didn't load: ${reason}. ` +
+        "It has been removed from the map options."
+    );
+    this._reductionListeners.forEach((fn) => fn());
   }
 
   /** Download a file. Returns its bytes, or null if an optional file is missing. */
@@ -290,8 +332,11 @@ export class UMAPGeneViewer {
     if (!pending.parsed) {
       pending.parsed = pending.downloaded
         .then((ok) => ok && this._loadReduction(pending.rf))
-        .catch((err) => console.log(`Reduction ${key} not available:`, err.message))
-        .finally(() => this._pendingReductions.delete(key));
+        .then((loaded) => {
+          if (loaded) this._pendingReductions.delete(key);
+          else this._dropReduction(key, "the file could not be read");
+        })
+        .catch((err) => this._dropReduction(key, err.message));
     }
     return pending.parsed;
   }

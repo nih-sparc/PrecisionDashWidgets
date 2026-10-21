@@ -44,8 +44,16 @@ export function useDatasetConfig({ dataUrl, datasetId, getCloudfront }) {
     };
   });
 
+  // Bumped per dataset change, so a slow manifest for a previous dataset is ignored
+  let request = 0;
+
   async function fetchManifest(url) {
-    if (!url) return;
+    const id = ++request;
+    manifest.value = null;
+    if (!url) {
+      loading.value = false;
+      return;
+    }
 
     loading.value = true;
     error.value = null;
@@ -63,26 +71,25 @@ export function useDatasetConfig({ dataUrl, datasetId, getCloudfront }) {
       }
 
       const response = await fetch(buildSignedUrl(manifestUrl, getCloudfront?.()));
+      if (id !== request) return;
       if (!response.ok) {
         console.log("manifest.json not available, using frontend config only");
-        manifest.value = null;
         return;
       }
 
-      manifest.value = await response.json();
+      const json = await response.json();
+      if (id === request) manifest.value = json;
     } catch (err) {
-      console.log("manifest.json fetch failed, using frontend config only:", err.message);
-      manifest.value = null;
+      if (id === request) {
+        console.log("manifest.json fetch failed, using frontend config only:", err.message);
+      }
     } finally {
-      loading.value = false;
+      if (id === request) loading.value = false;
     }
   }
 
   // Re-fetch manifest when dataUrl changes
-  watch(dataUrlRef, (url) => {
-    if (url) fetchManifest(url);
-    else manifest.value = null;
-  }, { immediate: true });
+  watch(dataUrlRef, fetchManifest, { immediate: true });
 
   return {
     manifest,

@@ -401,6 +401,7 @@ const loadingMessage = ref("Initializing data viewer...");
 const error = ref(null);
 const selectedReduction = ref(null);
 const reductionOptions = ref([]);
+let stopReductionUpdates = null;
 const gradientExpanded = ref(false);
 
 // Gene selection - internal state
@@ -503,6 +504,10 @@ async function initWithViewer(viewerInstance) {
     loadingMessage.value = "Loading data...";
     viewer.value = viewerInstance;
     reductionOptions.value = viewer.value.getReductionOptions();
+    stopReductionUpdates?.();
+    stopReductionUpdates = viewer.value.onReductionsChange?.(() => {
+      reductionOptions.value = viewer.value.getReductionOptions();
+    });
     selectedReduction.value = viewer.value.defaultReduction;
     await loadReductionData();
     loading.value = false;
@@ -550,15 +555,20 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  stopReductionUpdates?.();
   if (resizeObserver.value) resizeObserver.value.disconnect();
   if (reglInstance.value) reglInstance.value.destroy();
 });
 
 // Reactivity
-watch(selectedReduction, async (_, oldVal) => {
+watch(selectedReduction, async (newVal, oldVal) => {
   // oldVal is null during init, which loads the data itself
   if (!oldVal || loading.value) return;
-  await loadReductionData();
+  if (!(await loadReductionData())) {
+    // Failed (not just superseded by a newer pick): go back to the previous map
+    if (selectedReduction.value === newVal) selectedReduction.value = oldVal;
+    return;
+  }
   // New coordinate space: drop the old zoom
   if (chartCanvas.value) d3.select(chartCanvas.value).property("__zoom", d3.zoomIdentity);
   if (canVisualize.value) runWhenActive(visualize);
@@ -572,16 +582,21 @@ watch(gradientExpanded, async (isExpanded) => {
 });
 
 // Methods
+/** Load the selected cell map. Returns false if it failed or a newer pick replaced it. */
 async function loadReductionData() {
+  const key = selectedReduction.value;
   try {
-    const data = await viewer.value.getReductionData(selectedReduction.value);
+    const data = await viewer.value.getReductionData(key);
+    // A slow first load can finish after a newer pick; keep the newest
+    if (selectedReduction.value !== key) return false;
     reductionData.value = data;
     stats.value.totalCells = data.length;
+    return true;
   } catch (err) {
     console.error("Failed to load reduction data:", err);
-    error.value = `Failed to load ${selectedReduction.value.toUpperCase()} data: ${
-      err.message
-    }`;
+    reductionOptions.value = viewer.value.getReductionOptions();
+    error.value = `Failed to load ${key.toUpperCase()} data: ${err.message}`;
+    return false;
   }
 }
 

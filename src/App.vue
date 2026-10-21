@@ -76,6 +76,7 @@ const {
 } = useSharedDataEngine({
   dataUrl,
   config: activeConfig,
+  configLoading,
   getCloudfront,
 });
 
