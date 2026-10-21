@@ -275,7 +275,7 @@
 
 <script setup>
 import { ref, shallowRef, computed, onMounted, onBeforeUnmount, watch } from "vue";
-import { useDataEngine, useDatasetActiveConfig } from "../../composables/useSharedDataEngine.js";
+import { useDataEngine, useDatasetActiveConfig, useServicesCloudfront } from "../../composables/useSharedDataEngine.js";
 import {
   LINK_TYPES,
   SORT_OPTIONS,
@@ -300,6 +300,7 @@ const props = defineProps({
 const emit = defineEmits(["update:Vars", "select-peak"]);
 
 const { viewer: sharedViewer, loading: engineLoading } = useDataEngine();
+const getCloudfront = useServicesCloudfront();
 const injectedConfig = useDatasetActiveConfig();
 const activeConfig = computed(() => props.config || injectedConfig.value || {});
 
@@ -384,7 +385,7 @@ onMounted(async () => {
     await initWithViewer(sharedViewer.value);
   } else if (!engineLoading.value) {
     const { UMAPGeneViewer } = await import("../dataManager.js");
-    const v = new UMAPGeneViewer(props.dataPath, props.config || {});
+    const v = new UMAPGeneViewer(props.dataPath, { ...(props.config || {}), getCloudfront });
     await v.initialize();
     await initWithViewer(v);
   } else {

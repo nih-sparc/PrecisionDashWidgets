@@ -1,4 +1,55 @@
 import * as duckdb from "@duckdb/duckdb-wasm";
+import { buildSignedUrl } from "@pennsieve-viz/core";
+
+// DuckDB takes ~1 s to download and compile, so it can be started before the
+// dataset URL is known. The first viewer takes the preloaded instance; later
+// ones (e.g. after switching datasets) get a fresh one.
+let preloadedDuckDB = null;
+
+async function createDuckDB() {
+  const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
+  const workerUrl = URL.createObjectURL(
+    new Blob([`importScripts("${bundle.mainWorker}");`], { type: "text/javascript" })
+  );
+  const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(workerUrl));
+  await db.instantiate(bundle.mainModule);
+  URL.revokeObjectURL(workerUrl);
+  return { db, conn: await db.connect() };
+}
+
+/** Start booting DuckDB now so it's ready when the data arrives. */
+export function preloadDuckDB() {
+  if (!preloadedDuckDB) {
+    preloadedDuckDB = createDuckDB();
+    preloadedDuckDB.catch(() => (preloadedDuckDB = null));
+  }
+}
+
+function takeDuckDB() {
+  const instance = preloadedDuckDB || createDuckDB();
+  preloadedDuckDB = null;
+  return instance;
+}
+
+/**
+ * Arrow table → array of plain objects. Reads column by column, which is
+ * ~3x faster than row.toJSON() on wide tables. `transform` can extend each row.
+ */
+function tableToObjects(table, transform) {
+  const names = table.schema.fields.map((f) => f.name);
+  const columns = names.map((name) => {
+    const vec = table.getChild(name);
+    // toArray() turns nulls into 0 for numeric columns, so use get() when there are nulls
+    return vec.nullCount === 0 ? vec.toArray() : Array.from({ length: vec.length }, (_, i) => vec.get(i));
+  });
+  const rows = new Array(table.numRows);
+  for (let i = 0; i < rows.length; i++) {
+    const row = {};
+    for (let c = 0; c < names.length; c++) row[names[c]] = columns[c][i];
+    rows[i] = transform ? transform(row) : row;
+  }
+  return rows;
+}
 
 export class UMAPGeneViewer {
   constructor(basePath = "/data", config = {}) {
@@ -8,6 +59,7 @@ export class UMAPGeneViewer {
     this.db = null;
     this.conn = null;
     this.reductions = new Map(); // key → merged data array
+    this._pendingReductions = new Map(); // key → promise, for maps loading in the background
     this.geneCache = new Map();
     this.loadedChunks = new Set();
   }
@@ -17,154 +69,146 @@ export class UMAPGeneViewer {
     return this.reductions.get("umap") || null;
   }
 
+  // Signed with the credentials current at call time (config.getCloudfront), so
+  // files fetched long after load still carry a valid signature
   _buildUrl(filename) {
     const qIndex = this.basePath.indexOf('?');
-    if (qIndex === -1) return `${this.basePath}/${filename}`;
-    const base = this.basePath.substring(0, qIndex);
-    const qs = this.basePath.substring(qIndex);
-    return `${base}/${filename}${qs}`;
+    const url = qIndex === -1
+      ? `${this.basePath}/${filename}`
+      : `${this.basePath.substring(0, qIndex)}/${filename}${this.basePath.substring(qIndex)}`;
+    return buildSignedUrl(url, this.config?.getCloudfront?.());
   }
 
   async initialize() {
     try {
-      // Get DuckDB bundles
-      const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
-      const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+      // Data downloads don't need DuckDB, so start them while it boots
+      const t0 = performance.now();
+      const since = () => Math.round(performance.now() - t0);
+      const timing = {};
+      const files = this._startDownloads().then((f) => ((timing.downloads = since()), f));
+      files.catch(() => {}); // surfaced by the await below
+      const { db, conn } = await takeDuckDB();
+      timing.duckdb = since();
+      this.db = db;
+      this.conn = conn;
 
-      // Create worker
-      const worker_url = URL.createObjectURL(
-        new Blob([`importScripts("${bundle.mainWorker}");`], {
-          type: "text/javascript",
-        })
+      await this.loadEssentialData(await files);
+      console.info(
+        `[DataEngine] ready in ${since()} ms (DuckDB ready at ${timing.duckdb} ms, ` +
+          `files downloaded at ${timing.downloads} ms)`
       );
-
-      const worker = new Worker(worker_url);
-      const logger = new duckdb.VoidLogger();
-
-      // Initialize database
-      this.db = new duckdb.AsyncDuckDB(logger, worker);
-      await this.db.instantiate(bundle.mainModule);
-      this.conn = await this.db.connect();
-
-      // Load essential data
-      await this.loadEssentialData();
     } catch (error) {
       console.error("Failed to initialize data manager:", error);
       throw new Error(`Initialization failed: ${error.message}`);
     }
   }
 
-  async loadEssentialData() {
+  /** Begin fetching everything needed for the first view. Resolves to { reductionFiles, firstReduction, loaded }. */
+  async _startDownloads() {
+    const fixedFiles = [
+      { name: "gene_locations.parquet", required: true },
+      { name: "gene_stats.parquet", required: true },
+      { name: "cells.parquet", required: true },
+      { name: "metadata.parquet", required: false },
+      { name: "genes.parquet", required: true },
+    ].map((f) => ({ ...f, path: this._buildUrl(f.name) }));
+    const fixedDownloads = fixedFiles.map((f) => this._fetchFile(f));
+    fixedDownloads.forEach((d) => d.catch(() => {})); // surfaced by Promise.all below
+
     // Without embeddings from config, read them from the dataset's manifest
     if (!this.config?.embeddings?.length) {
       await this._loadManifest();
     }
 
-    // Build the list of reduction files from config or defaults
+    // Build the list of reduction files from config or defaults.
+    // The map shown first downloads now; the rest load in the background.
     const reductionFiles = this._getReductionFiles();
+    const defaultKey = this._pickDefaultReduction(reductionFiles.map((rf) => rf.reductionKey));
+    const firstReduction = reductionFiles.find((rf) => rf.reductionKey === defaultKey);
+    const files = [...(firstReduction ? [firstReduction] : []), ...fixedFiles];
+    const downloads = [...(firstReduction ? [this._fetchFile(firstReduction)] : []), ...fixedDownloads];
+    const buffers = await Promise.all(downloads);
+    return {
+      reductionFiles,
+      firstReduction,
+      loaded: files.map((file, i) => ({ file, buffer: buffers[i] })),
+    };
+  }
 
-    const filesToLoad = [
-      ...reductionFiles,
-      {
-        name: "gene_locations.parquet",
-        path: this._buildUrl("gene_locations.parquet"),
-        required: true,
-      },
-      {
-        name: "gene_stats.parquet",
-        path: this._buildUrl("gene_stats.parquet"),
-        required: true,
-      },
-      {
-        name: "cells.parquet",
-        path: this._buildUrl("cells.parquet"),
-        required: true,
-      },
-      {
-        name: "metadata.parquet",
-        path: this._buildUrl("metadata.parquet"),
-        required: false,
-      },
-      {
-        name: "genes.parquet",
-        path: this._buildUrl("genes.parquet"),
-        required: true,
-      },
-    ];
+  async loadEssentialData({ reductionFiles, firstReduction, loaded }) {
+    const laterReductions = reductionFiles.filter((rf) => rf !== firstReduction);
 
-    for (const file of filesToLoad) {
-      try {
-        const response = await fetch(file.path);
+    await Promise.all(
+      loaded
+        .filter(({ buffer }) => buffer)
+        .map(({ file, buffer }) => this.db.registerFileBuffer(file.name, buffer))
+    );
 
-        if (!response.ok) {
-          if (file.required) {
-            throw new Error(
-              `Failed to load required file: ${file.name} (${response.status} ${response.statusText})`
-            );
-          } else {
-            console.log(
-              `Optional file ${file.name} not available, skipping...`
-            );
-            continue;
-          }
-        }
+    const hasMetadataFile = loaded.some(({ file, buffer }) => file.name === "metadata.parquet" && buffer);
+    this._cellMetadata = await this._readCellMetadata(hasMetadataFile);
 
-        const arrayBuffer = await response.arrayBuffer();
-        await this.db.registerFileBuffer(
-          file.name,
-          new Uint8Array(arrayBuffer)
-        );
-      } catch (error) {
-        if (file.required) {
-          throw error;
-        }
-        console.log(`Optional file ${file.name} not available:`, error.message);
-      }
+    if (firstReduction) await this._loadReduction(firstReduction);
+
+    // Other maps download now but are only parsed when first shown, so they
+    // don't hold up gene queries on the shared DuckDB connection
+    for (const rf of laterReductions) {
+      const downloaded = this._fetchFile(rf).then(
+        (buffer) => buffer && this.db.registerFileBuffer(rf.name, buffer).then(() => true)
+      );
+      downloaded.catch(() => {});
+      this._pendingReductions.set(rf.reductionKey, { rf, downloaded, parsed: null });
     }
+  }
 
-    // Load cell metadata first
-    let cellMetadata = new Map();
+  /** Download a file. Returns its bytes, or null if an optional file is missing. */
+  async _fetchFile(file) {
     try {
-      // Try metadata.parquet first
-      try {
-        const metaResult = await this.conn.query(
-          'SELECT * FROM "metadata.parquet"'
-        );
-        const metaArray = metaResult.toArray().map((row) => row.toJSON());
+      const response = await fetch(file.path);
+      if (!response.ok) {
+        if (file.required) {
+          throw new Error(
+            `Failed to load required file: ${file.name} (${response.status} ${response.statusText})`
+          );
+        }
+        console.log(`Optional file ${file.name} not available, skipping...`);
+        return null;
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    } catch (error) {
+      if (file.required) throw error;
+      console.log(`Optional file ${file.name} not available:`, error.message);
+      return null;
+    }
+  }
 
-        metaArray.forEach((row) => {
-          cellMetadata.set(row.cell_id, row);
-        });
-      } catch (e) {
-        // Fall back to cells.parquet
-        console.log("metadata.parquet not found, trying cells.parquet...");
-        const cellsResult = await this.conn.query(
-          'SELECT * FROM "cells.parquet"'
-        );
-        const cellsArray = cellsResult.toArray().map((row) => row.toJSON());
-
-        cellsArray.forEach((row) => {
-          cellMetadata.set(row.cell_id, row);
-        });
+  /** Cell metadata by cell_id, from metadata.parquet when the dataset has one, else cells.parquet. */
+  async _readCellMetadata(hasMetadataFile) {
+    const cellMetadata = new Map();
+    try {
+      const file = hasMetadataFile ? "metadata.parquet" : "cells.parquet";
+      const result = await this.conn.query(`SELECT * FROM "${file}"`);
+      for (const row of tableToObjects(result)) {
+        cellMetadata.set(row.cell_id, row);
       }
     } catch (error) {
       console.warn("Could not load cell metadata:", error);
     }
+    return cellMetadata;
+  }
 
-    // Merge each reduction with metadata and store in reductions Map
-    for (const rf of reductionFiles) {
-      try {
-        const result = await this.conn.query(`SELECT * FROM "${rf.name}"`);
-        const rows = result.toArray().map((row) => row.toJSON());
-        const merged = rows.map((row) => {
-          const metadata = cellMetadata.get(row.cell_id) || {};
-          return { ...row, ...metadata };
-        });
-        this.reductions.set(rf.reductionKey, merged);
-      } catch (err) {
-        if (rf.required) throw err;
-        console.log(`Reduction ${rf.reductionKey} not available`);
-      }
+  /** Merge a reduction with cell metadata and store it in the reductions Map. */
+  async _loadReduction(rf) {
+    try {
+      const result = await this.conn.query(`SELECT * FROM "${rf.name}"`);
+      const merged = tableToObjects(result, (row) =>
+        Object.assign(row, this._cellMetadata.get(row.cell_id))
+      );
+      this.reductions.set(rf.reductionKey, merged);
+      return true;
+    } catch (err) {
+      if (rf.required) throw err;
+      console.log(`Reduction ${rf.reductionKey} not available`);
+      return false;
     }
   }
 
@@ -219,14 +263,19 @@ export class UMAPGeneViewer {
 
   /** Reduction to show first: the dataset's default (WNN for multiome), else umap. */
   get defaultReduction() {
+    return this._pickDefaultReduction(this.getAvailableReductions());
+  }
+
+  _pickDefaultReduction(keys) {
     const preferred =
       this.config?.default_embedding || this.manifest?.default_embedding;
-    if (preferred && this.reductions.has(preferred)) return preferred;
-    if (this.reductions.has("umap")) return "umap";
-    return this.reductions.keys().next().value ?? null;
+    if (preferred && keys.includes(preferred)) return preferred;
+    if (keys.includes("umap")) return "umap";
+    return keys[0] ?? null;
   }
 
   async getReductionData(reductionType = this.defaultReduction) {
+    await this._finishReduction(reductionType);
     const data = this.reductions.get(reductionType);
     if (!data) {
       throw new Error(`Reduction "${reductionType}" not available`);
@@ -234,9 +283,22 @@ export class UMAPGeneViewer {
     return data;
   }
 
-  /** Get all available reduction keys. */
+  /** Parse a background-downloaded map the first time it's needed. */
+  _finishReduction(key) {
+    const pending = this._pendingReductions.get(key);
+    if (!pending) return null;
+    if (!pending.parsed) {
+      pending.parsed = pending.downloaded
+        .then((ok) => ok && this._loadReduction(pending.rf))
+        .catch((err) => console.log(`Reduction ${key} not available:`, err.message))
+        .finally(() => this._pendingReductions.delete(key));
+    }
+    return pending.parsed;
+  }
+
+  /** Get all available reduction keys, including ones still loading. */
   getAvailableReductions() {
-    return Array.from(this.reductions.keys());
+    return [...new Set([...this.reductions.keys(), ...this._pendingReductions.keys()])];
   }
 
   /**
@@ -282,7 +344,7 @@ export class UMAPGeneViewer {
   }
 
   hasReduction(key) {
-    return this.reductions.has(key);
+    return this.reductions.has(key) || this._pendingReductions.has(key);
   }
 
   hasTsne() {
@@ -423,23 +485,7 @@ export class UMAPGeneViewer {
         // Load chunk file
         const chunkFileName = location.split("/").pop();
 
-        // Check if chunk already loaded
-        if (!this.loadedChunks.has(chunkFileName)) {
-          const response = await fetch(this._buildUrl(location));
-          if (!response.ok) {
-            throw new Error(
-              `Failed to load chunk file: ${response.statusText}`
-            );
-          }
-
-          const buffer = await response.arrayBuffer();
-          await this.db.registerFileBuffer(
-            chunkFileName,
-            new Uint8Array(buffer)
-          );
-
-          this.loadedChunks.add(chunkFileName);
-        }
+        await this._ensureChunk(chunkFileName, location);
 
         const result = await this.conn.query(`
           SELECT cell_id, expression
@@ -459,6 +505,26 @@ export class UMAPGeneViewer {
       console.error(`Failed to load gene ${geneName}:`, error);
       throw error;
     }
+  }
+
+  /** Download and register a gene chunk once, even when several genes ask for it at the same time. */
+  _ensureChunk(chunkFileName, location) {
+    if (!this._chunkLoads) this._chunkLoads = new Map();
+    if (!this._chunkLoads.has(chunkFileName)) {
+      const load = (async () => {
+        const response = await fetch(this._buildUrl(location));
+        if (!response.ok) {
+          throw new Error(`Failed to load chunk file: ${response.statusText}`);
+        }
+        const buffer = await response.arrayBuffer();
+        await this.db.registerFileBuffer(chunkFileName, new Uint8Array(buffer));
+        this.loadedChunks.add(chunkFileName);
+      })();
+      // Let a failed download be retried
+      load.catch(() => this._chunkLoads.delete(chunkFileName));
+      this._chunkLoads.set(chunkFileName, load);
+    }
+    return this._chunkLoads.get(chunkFileName);
   }
 
   getCellCount() {

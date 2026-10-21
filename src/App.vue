@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, watch, computed, markRaw, provide } from "vue";
+import { ref, computed, markRaw, provide } from "vue";
 
 import { MultiDashboard } from "../../PennsieveDashboard/src/components/index";
 import {
@@ -7,8 +7,10 @@ import {
   SideBySide,
   GeneXDistribution,
   ProportionPlot,
+  ChromatinAccessibility,
+  LinkedPeaks,
 } from "./components/index";
-import { useViewerAssets } from "./composables/useViewerAssets.js";
+import { useViewerAssets } from "@pennsieve-viz/core";
 import { useDatasetConfig } from "./composables/useDatasetConfig.js";
 import { useSharedDataEngine, DATASET_CONFIG_KEY } from "./composables/useSharedDataEngine.js";
 
@@ -16,38 +18,45 @@ const RawGeneExpression = markRaw(GeneExpression);
 const RawSideBySide = markRaw(SideBySide);
 const RawGeneXDistribution = markRaw(GeneXDistribution);
 const RawProportionPlot = markRaw(ProportionPlot);
+const RawChromatinAccessibility = markRaw(ChromatinAccessibility);
+const RawLinkedPeaks = markRaw(LinkedPeaks);
 
-// --- Pennsieve config (hardcoded for now) ---
-const API2_URL = "/api2";
-const TOKEN = "YOUR_API_TOKEN_HERE";
+// --- Pennsieve config ---
+// Published datasets only: assets come from the public discover endpoint, no token.
+// Defaults to the dev environment; set VITE_API2_URL=https://api2.pennsieve.io for prod data.
+const API2_URL = import.meta.env.VITE_API2_URL || "https://api2.pennsieve.net";
 
 const DATASETS = [
   {
-    id: "parquet-passthrough",
-    label: "Human DRG (Parquet)",
-    datasetId: "N:dataset:e406826e-1e0c-42e3-b88a-73bb175924b0",
+    id: "human-drg-atlas",
+    label: "Human DRG Atlas",
     packageId: "N:package:576bee78-58de-4b56-8da4-101c6b97ed61",
   },
   {
-    id: "seurat-package",
-    label: "Human DRG (Seurat Processed)",
-    datasetId: "N:dataset:e406826e-1e0c-42e3-b88a-73bb175924b0",
+    id: "human-drg-multiome",
+    label: "Human DRG Multiome ATAC + RNA-seq",
+    // TODO: swap for the package published + processed in dev
     packageId: "N:package:0a61d57f-38fd-4db8-b8ce-ba42266e0380",
   },
 ];
 
-// --- Viewer assets composable ---
-const {
-  selectedDatasetId,
-  dataUrl,
-  loading,
-  error,
-  datasets,
-} = useViewerAssets({
+// --- Viewer assets (shared composable from @pennsieve-viz/core; keeps CloudFront creds renewed) ---
+const datasets = DATASETS;
+const selectedDatasetId = ref<string | null>(null);
+const selectedPackageId = computed(
+  () => datasets.find((d) => d.id === selectedDatasetId.value)?.packageId ?? null
+);
+
+const { assets, cloudfront, loading, error } = useViewerAssets({
   api2Url: API2_URL,
-  token: TOKEN,
-  datasets: DATASETS,
+  packageId: selectedPackageId,
+  assetTypes: ["parquet"],
 });
+
+// Unsigned base path; requests are signed from `cloudfront` at fetch time, so a
+// credential renewal doesn't rebuild the engine or refetch the manifest
+const dataUrl = computed(() => assets.value[0]?.asset_url.replace(/\/+$/, "") ?? null);
+const getCloudfront = () => cloudfront.value;
 
 // --- Dataset config composable (fetches manifest + merges with frontend config) ---
 const {
@@ -56,6 +65,7 @@ const {
 } = useDatasetConfig({
   dataUrl,
   datasetId: selectedDatasetId,
+  getCloudfront,
 });
 
 // --- Shared data engine (ONE UMAPGeneViewer for all widgets) ---
@@ -66,20 +76,20 @@ const {
 } = useSharedDataEngine({
   dataUrl,
   config: activeConfig,
+  getCloudfront,
 });
 
 // Provide config to descendants
 provide(DATASET_CONFIG_KEY, activeConfig);
 
-// --- Services (reactive so widgets pick up URL changes) ---
-const services = reactive({
+// --- Services ---
+// Refs, not values: the dashboard copies `services` once, and a ref is the only
+// way renewed credentials reach widgets that build their own data engine
+const services = {
   ApiUrl: "https://api.pennsieve.net",
-  s3Url: null as string | null,
-});
-
-watch(dataUrl, (url) => {
-  services.s3Url = url;
-});
+  s3Url: dataUrl,
+  cloudfront,
+};
 
 //name = component key
 const availableWidgets = [
@@ -87,6 +97,8 @@ const availableWidgets = [
   { name: "SideBySide", component: RawSideBySide },
   { name: "GeneXDistribution", component: RawGeneXDistribution },
   { name: "ProportionPlot", component: RawProportionPlot },
+  { name: "ChromatinAccessibility", component: RawChromatinAccessibility },
+  { name: "LinkedPeaks", component: RawLinkedPeaks },
 ];
 
 // Dashboard options are now computed to react to config changes
@@ -101,7 +113,7 @@ const dashboardOptions = computed(() => {
         x: 0,
         y: 0,
         w: 12,
-        h: 11,
+        h: 15,
         componentKey: "GeneExpression",
         componentName: "Gene Expression",
         component: RawGeneExpression,
@@ -126,7 +138,7 @@ const dashboardOptions = computed(() => {
         x: 0,
         y: 0,
         w: 12,
-        h: 11,
+        h: 15,
         componentKey: "SideBySide",
         componentName: "Side By Side Comparison",
         component: RawSideBySide,
@@ -150,9 +162,9 @@ const dashboardOptions = computed(() => {
         x: 0,
         y: 0,
         w: 12,
-        h: 11,
+        h: 15,
         componentKey: "GeneXDistribution",
-        componentName: "Gene Expresion Distribution",
+        componentName: "Gene Expression Distribution",
         component: RawGeneXDistribution,
         Props: {
           initialGene: genes.geneX || "CDH9",
@@ -174,7 +186,7 @@ const dashboardOptions = computed(() => {
         x: 0,
         y: 0,
         w: 12,
-        h: 11,
+        h: 15,
         componentKey: "ProportionPlot",
         componentName: "Proportion Plot",
         component: RawProportionPlot,
@@ -190,11 +202,50 @@ const dashboardOptions = computed(() => {
     hideHeader: true,
   };
 
+  const chromatinDash = {
+    defaultLayout: [
+      {
+        id: "ChromatinAccessibility-1",
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 15,
+        componentKey: "ChromatinAccessibility",
+        componentName: "Chromatin Accessibility",
+        component: RawChromatinAccessibility,
+        Props: {
+          initialGene: genes.chromatin || "SCN10A",
+          config: cfg,
+        },
+      },
+      {
+        id: "LinkedPeaks-1",
+        x: 6,
+        y: 0,
+        w: 6,
+        h: 15,
+        componentKey: "LinkedPeaks",
+        componentName: "Linked Peaks",
+        component: RawLinkedPeaks,
+        Props: {
+          initialGene: genes.chromatin || "SCN10A",
+          config: cfg,
+        },
+      },
+    ],
+    availableWidgets,
+    services,
+    name: "Chromatin Accessibility",
+    hideEditGrid: true,
+    hideHeader: true,
+  };
+
   return [
     geneCoexpressionDash,
     geneCellComparisonDash,
     GeneXDistributionDash,
     proportionPlotDash,
+    chromatinDash,
   ];
 });
 

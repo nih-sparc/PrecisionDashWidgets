@@ -1,13 +1,17 @@
 import { ref, computed, watch, toRef, isRef } from "vue";
+import { buildSignedUrl } from "@pennsieve-viz/core";
 import { getDatasetConfig } from "../config/datasetConfig.js";
 
 /**
  * Fetches manifest.json from the data URL and merges it with
  * the frontend dataset config to produce a reactive activeConfig.
  *
- * @param {{ dataUrl: Ref<string|null>, datasetId: Ref<string|null> }} options
+ * `dataUrl` is the unsigned base path; the manifest request is signed with
+ * `getCloudfront()` when given.
+ *
+ * @param {{ dataUrl: Ref<string|null>, datasetId: Ref<string|null>, getCloudfront?: () => object|null }} options
  */
-export function useDatasetConfig({ dataUrl, datasetId }) {
+export function useDatasetConfig({ dataUrl, datasetId, getCloudfront }) {
   const dataUrlRef = isRef(dataUrl) ? dataUrl : toRef(dataUrl);
   const datasetIdRef = isRef(datasetId) ? datasetId : toRef(datasetId);
 
@@ -58,7 +62,7 @@ export function useDatasetConfig({ dataUrl, datasetId }) {
         manifestUrl = `${base}/manifest.json${qs}`;
       }
 
-      const response = await fetch(manifestUrl);
+      const response = await fetch(buildSignedUrl(manifestUrl, getCloudfront?.()));
       if (!response.ok) {
         console.log("manifest.json not available, using frontend config only");
         manifest.value = null;

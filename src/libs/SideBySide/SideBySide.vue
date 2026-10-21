@@ -193,7 +193,7 @@ import {
 } from "vue";
 import * as d3 from "d3";
 import createRegl from "regl";
-import { useDataEngine, useDatasetActiveConfig } from "../../composables/useSharedDataEngine.js";
+import { useDataEngine, useDatasetActiveConfig, useServicesCloudfront } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
 import ReductionToggle from "../shared/ReductionToggle.vue";
 import { getMetadataColumns, getCategoricalColumns, getExternalLink } from "../../config/datasetConfig.js";
@@ -210,6 +210,7 @@ const emit = defineEmits(["update:Vars"]);
 
 // Shared data engine + config (injected from ancestor)
 const { viewer: sharedViewer, loading: engineLoading, error: engineError } = useDataEngine();
+const getCloudfront = useServicesCloudfront();
 const { runWhenActive, observeResize } = useKeepAliveGate();
 const injectedConfig = useDatasetActiveConfig();
 const activeConfig = computed(() => props.config || injectedConfig.value || {});
@@ -457,7 +458,7 @@ onMounted(async () => {
   } else if (!engineLoading.value) {
     // Fallback: create own viewer (standalone mode)
     const { UMAPGeneViewer } = await import("../dataManager.js");
-    const v = new UMAPGeneViewer(props.dataPath);
+    const v = new UMAPGeneViewer(props.dataPath, { getCloudfront });
     await v.initialize();
     await initWithViewer(v);
   } else {

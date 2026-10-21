@@ -143,7 +143,7 @@
 <script setup>
 import { ref, shallowRef, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import * as d3 from "d3";
-import { useDataEngine, useDatasetActiveConfig } from "../../composables/useSharedDataEngine.js";
+import { useDataEngine, useDatasetActiveConfig, useServicesCloudfront } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
 
 const props = defineProps({
@@ -157,6 +157,7 @@ const props = defineProps({
 const emit = defineEmits(["update:Vars"]);
 
 const { viewer: sharedViewer, loading: engineLoading } = useDataEngine();
+const getCloudfront = useServicesCloudfront();
 const { runWhenActive, observeResize } = useKeepAliveGate();
 const injectedConfig = useDatasetActiveConfig();
 const activeConfig = computed(() => props.config || injectedConfig.value || {});
@@ -315,7 +316,7 @@ onMounted(async () => {
     await initWithViewer(sharedViewer.value);
   } else if (!engineLoading.value) {
     const { UMAPGeneViewer } = await import("../dataManager.js");
-    const v = new UMAPGeneViewer(props.dataPath, props.config || {});
+    const v = new UMAPGeneViewer(props.dataPath, { ...(props.config || {}), getCloudfront });
     await v.initialize();
     await initWithViewer(v);
   } else {

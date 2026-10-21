@@ -3,8 +3,8 @@
  * Keys match the dataset `id` from the DATASETS array in App.vue.
  */
 export const DATASET_CONFIGS = {
-  "parquet-passthrough": {
-    label: "Human DRG (Parquet)",
+  "human-drg-atlas": {
+    label: "Human DRG Atlas",
     hiddenColumns: ["donor_id", "cell_barcode"],
     defaultColorBy: "Atlas_annotation",
     defaultGenes: {
@@ -20,8 +20,8 @@ export const DATASET_CONFIGS = {
       label: "View in Nervosensus",
     },
   },
-  "seurat-package": {
-    label: "Human DRG (Seurat Processed)",
+  "human-drg-multiome": {
+    label: "Human DRG Multiome ATAC + RNA-seq",
     hiddenColumns: ["donor_id"],
     defaultColorBy: "final_cluster_ids",
     defaultGenes: {
