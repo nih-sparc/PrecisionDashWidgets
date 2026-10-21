@@ -399,6 +399,7 @@ const error = ref(null);
 const selectedReduction = ref(null);
 const reductionOptions = ref([]);
 let stopReductionUpdates = null;
+let canvasListeners = null; // AbortController for the current render's canvas listeners
 const gradientExpanded = ref(false);
 
 // Gene selection - internal state
@@ -543,6 +544,7 @@ useWidgetDataEngine({
 
 onBeforeUnmount(() => {
   stopReductionUpdates?.();
+  canvasListeners?.abort();
   if (resizeObserver.value) resizeObserver.value.disconnect();
   if (reglInstance.value) reglInstance.value.destroy();
 });
@@ -797,6 +799,9 @@ async function renderChart() {
   canvas.style.width = `${width}px`;
   canvas.style.height = `${height}px`;
   lastCanvasSize.value = { w: width, h: height };
+  // The previous render's canvas listeners draw with its regl instance: remove them
+  // before that instance is destroyed
+  canvasListeners?.abort();
   // Recreate REGL on size change to keep viewport correct
   if (reglInstance.value) {
     try {
@@ -910,6 +915,12 @@ async function renderChart() {
 
   d3.select(canvas).call(zoom);
 
+  // Removed by the next render (or unmount) via canvasListeners.abort()
+  canvasListeners = new AbortController();
+  const { signal } = canvasListeners;
+  let hoverRafId = null;
+  signal.addEventListener("abort", () => hoverRafId && cancelAnimationFrame(hoverRafId));
+
   canvas.addEventListener(
     "wheel",
     (event) => {
@@ -942,10 +953,9 @@ async function renderChart() {
       render();
       d3.select(canvas).property("__zoom", newTransform);
     },
-    { passive: false }
+    { passive: false, signal }
   );
 
-  let hoverRafId = null;
   canvas.addEventListener("mousemove", (event) => {
     if (hoverRafId) return; // already have a pending frame
     hoverRafId = requestAnimationFrame(() => {
@@ -990,12 +1000,12 @@ async function renderChart() {
         render();
       }
     });
-  });
+  }, { signal });
 
   canvas.addEventListener("mouseleave", () => {
     hoveredPoint.value = null;
     render();
-  });
+  }, { signal });
 
   function render() {
     regl.clear({ color: [1, 1, 1, 1], depth: 1 });
