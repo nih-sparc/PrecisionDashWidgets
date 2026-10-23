@@ -1,5 +1,5 @@
 <template>
-  <div class="violin-plot-container">
+  <div class="pdw-theme violin-plot-container">
     <!-- Loading State -->
     <div v-if="loading" class="loading-container">
       <div class="spinner"></div>
@@ -50,7 +50,7 @@
               <button
                 @click="handleGeneSelect"
                 :disabled="!geneSearch.trim() || dataLoading"
-                class="visualize-btn"
+                class="visualize-btn pdw-btn pdw-btn--primary"
               >
                 {{ dataLoading ? "Loading..." : "Visualize" }}
               </button>
@@ -59,22 +59,14 @@
 
           <label class="label">
             Plot Type:
-            <div class="plot-type-toggle">
-              <button
-                @click="plotType = 'violin'"
-                :class="{ active: plotType === 'violin' }"
-                class="toggle-btn"
-              >
-                Violin
-              </button>
-              <button
-                @click="plotType = 'box'"
-                :class="{ active: plotType === 'box' }"
-                class="toggle-btn"
-              >
-                Box
-              </button>
-            </div>
+            <SegmentedToggle
+              v-model="plotType"
+              aria-label="Plot type"
+              :options="[
+                { key: 'violin', label: 'Violin' },
+                { key: 'box', label: 'Box' },
+              ]"
+            />
           </label>
 
           <label class="checkbox-label">
@@ -109,6 +101,7 @@
 </template>
 
 <script setup>
+import SegmentedToggle from "../shared/SegmentedToggle.vue";
 import { ref, shallowRef, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import * as d3 from "d3";
 import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
@@ -638,7 +631,7 @@ function drawViolinPlot(data) {
           .attr("transform", "rotate(-45)")
           .style("text-anchor", "end")
           .style("font-size", "16px")
-          .style("fill", "#667eea")
+          .style("fill", "var(--pdw-primary)")
           .style("cursor", "pointer");
       }
     });
@@ -819,7 +812,7 @@ function updateDataPoints() {
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background: white;
+  background: var(--pdw-surface);
   padding: 12px 16px;
   box-sizing: border-box;
 }
@@ -839,8 +832,8 @@ function updateDataPoints() {
   display: flex;
   flex-direction: column;
   padding: 16px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--pdw-surface-muted);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   flex-shrink: 0;
   overflow-y: auto;
@@ -852,23 +845,23 @@ function updateDataPoints() {
   gap: 8px;
   font-size: 16px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   flex: 1;
 }
 
 .gene-expression-label {
   font-size: 16px;
   font-weight: 600;
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 
 .select {
   padding: 10px 14px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--pdw-border);
   border-radius: 2px;
   font-size: 16px;
-  background: white;
-  color: #1a202c;
+  background: var(--pdw-surface);
+  color: var(--pdw-text);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -879,8 +872,8 @@ function updateDataPoints() {
 
 .select:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--pdw-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
 .gene-input-wrapper {
@@ -892,11 +885,11 @@ function updateDataPoints() {
 .gene-input {
   flex: 1;
   padding: 10px 14px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--pdw-border);
   border-radius: 2px;
   font-size: 16px;
-  background: white;
-  color: #1a202c;
+  background: var(--pdw-surface);
+  color: var(--pdw-text);
   transition: all 0.2s;
   min-width: 0;
   box-sizing: border-box;
@@ -912,64 +905,16 @@ function updateDataPoints() {
 
 .gene-input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--pdw-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
-.visualize-btn {
-  padding: 10px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 2px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
-}
 
-.visualize-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-}
 
-.visualize-btn:disabled {
-  background: #94a3b8;
-  cursor: not-allowed;
-  opacity: 0.7;
-  transform: none;
-  box-shadow: none;
-}
 
-.plot-type-toggle {
-  display: flex;
-  gap: 8px;
-}
 
-.toggle-btn {
-  flex: 1;
-  padding: 8px 16px;
-  background: white;
-  border: 2px solid #e2e8f0;
-  border-radius: 2px;
-  font-size: 16px;
-  font-weight: 500;
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.2s;
-}
 
-.toggle-btn:hover {
-  border-color: #cbd5e1;
-  background: #f8fafc;
-}
 
-.toggle-btn.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-color: #667eea;
-  color: white;
-}
 
 .checkbox-label {
   display: flex;
@@ -977,7 +922,7 @@ function updateDataPoints() {
   gap: 8px;
   font-size: 16px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   cursor: pointer;
 }
 
@@ -985,15 +930,15 @@ function updateDataPoints() {
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: #667eea;
+  accent-color: var(--pdw-primary);
 }
 
 .plot-container {
   flex: 1;
   width: 80%;
   position: relative;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--pdw-surface);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   min-height: 0;
   display: flex;
@@ -1038,7 +983,7 @@ function updateDataPoints() {
   width: 60px;
   height: 60px;
   border: 5px solid #f3f3f3;
-  border-top: 5px solid #667eea;
+  border-top: 5px solid var(--pdw-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -1046,7 +991,7 @@ function updateDataPoints() {
 .loading-text {
   margin-top: 20px;
   font-size: 16px;
-  color: #64748b;
+  color: var(--pdw-text-muted);
 }
 
 .loading-overlay {
@@ -1064,7 +1009,7 @@ function updateDataPoints() {
   width: 40px;
   height: 40px;
   border: 3px solid #f3f3f3;
-  border-top: 3px solid #667eea;
+  border-top: 3px solid var(--pdw-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;

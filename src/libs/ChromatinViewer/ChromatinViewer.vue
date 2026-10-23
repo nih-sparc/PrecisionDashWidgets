@@ -1,5 +1,5 @@
 <template>
-  <div class="chromatin-container">
+  <div class="pdw-theme chromatin-container">
     <!-- Loading State -->
     <div v-if="loading" class="loading-container">
       <div class="spinner"></div>
@@ -45,7 +45,7 @@
               <button
                 @click="handleGeneSelect"
                 :disabled="!geneSearch.trim() || dataLoading || !available.geneCoords"
-                class="visualize-btn"
+                class="visualize-btn pdw-btn pdw-btn--primary"
               >
                 {{ dataLoading ? "Loading..." : "Visualize" }}
               </button>
@@ -77,25 +77,23 @@
 
           <label class="label">
             Signal:
-            <div class="plot-type-toggle">
-              <button
-                @click="signalMode = 'normalized'"
-                :class="{ active: signalMode === 'normalized' }"
-                class="toggle-btn"
-                title="Mean counts per cell, so groups of different sizes are comparable"
-              >
-                Normalized
-              </button>
-              <button
-                @click="signalMode = 'raw'"
-                :class="{ active: signalMode === 'raw' }"
-                :disabled="!hasCellCounts"
-                class="toggle-btn"
-                title="Total counts in the group (larger groups have higher signal)"
-              >
-                Raw
-              </button>
-            </div>
+            <SegmentedToggle
+              v-model="signalMode"
+              aria-label="Signal"
+              :options="[
+                {
+                  key: 'normalized',
+                  label: 'Normalized',
+                  title: 'Mean counts per cell, so groups of different sizes are comparable',
+                },
+                {
+                  key: 'raw',
+                  label: 'Raw',
+                  disabled: !hasCellCounts,
+                  title: 'Total counts in the group (larger groups have higher signal)',
+                },
+              ]"
+            />
           </label>
 
           <label
@@ -136,6 +134,7 @@
 </template>
 
 <script setup>
+import SegmentedToggle from "../shared/SegmentedToggle.vue";
 import { ref, shallowRef, computed, onBeforeUnmount, watch, nextTick } from "vue";
 import * as d3 from "d3";
 import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
@@ -175,10 +174,12 @@ const TRACK_GAP = 4;
 const GENE_LANE_HEIGHT = 34;
 const LINK_ROW_HEIGHT = 60;
 const MARGIN = { top: 34, right: 20, bottom: 12, left: 190 };
-const TARGET_COLOR = "#667eea";
+// The target gene and focused peak use the theme's primary color (--pdw-primary), read
+// at draw time: SVG fill/stroke attributes can't reference CSS variables
+const DEFAULT_ACCENT = "#667eea";
+let accentColor = DEFAULT_ACCENT;
 const OTHER_GENE_COLOR = "#94a3b8";
 const LINK_COLOR = "#f59e0b";
-const FOCUS_COLOR = "#667eea";
 const FOCUS_PADDING = 2000;
 
 const plotSvg = ref(null);
@@ -395,6 +396,7 @@ function signalValue(d) {
 function draw() {
   const svgEl = plotSvg.value;
   if (!svgEl) return;
+  accentColor = getComputedStyle(svgEl).getPropertyValue("--pdw-primary").trim() || DEFAULT_ACCENT;
   const svg = d3.select(svgEl);
   svg.selectAll("*").remove();
 
@@ -473,9 +475,9 @@ function drawFocus(svg, x, clampX, bottom, v) {
     .attr("width", width)
     .attr("y", MARGIN.top)
     .attr("height", bottom - MARGIN.top)
-    .attr("fill", FOCUS_COLOR)
+    .attr("fill", accentColor)
     .attr("fill-opacity", 0.08)
-    .attr("stroke", FOCUS_COLOR)
+    .attr("stroke", accentColor)
     .attr("stroke-width", 1.5)
     .attr("stroke-dasharray", "4 3");
   g.append("title").text(`Selected peak\n${v.chrom}:${formatBp(f.start)}–${formatBp(f.end)}`);
@@ -511,7 +513,7 @@ function drawGeneModel(svg, lanes, x, clampX, v) {
     const mid = MARGIN.top + i * GENE_LANE_HEIGHT + GENE_LANE_HEIGHT / 2 + 2;
     for (const gene of lane) {
       const isTarget = gene.name === v.gene.name;
-      const color = isTarget ? TARGET_COLOR : OTHER_GENE_COLOR;
+      const color = isTarget ? accentColor : OTHER_GENE_COLOR;
       const x1 = clampX(gene.start);
       const x2 = clampX(gene.end);
       const geneG = g.append("g");
@@ -558,7 +560,7 @@ function drawGeneModel(svg, lanes, x, clampX, v) {
         .attr("text-anchor", labelX === MARGIN.left + 2 ? "start" : "end")
         .attr("font-size", 16)
         .attr("font-weight", isTarget ? 700 : 400)
-        .attr("fill", isTarget ? TARGET_COLOR : "#475569")
+        .attr("fill", isTarget ? accentColor : "#475569")
         .text(gene.name);
     }
   });
@@ -722,7 +724,7 @@ function formatSignal(value) {
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background: white;
+  background: var(--pdw-surface);
   padding: 12px 16px;
   box-sizing: border-box;
 }
@@ -743,8 +745,8 @@ function formatSignal(value) {
   align-items: center;
   gap: 6px 16px;
   padding: 6px 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--pdw-surface-muted);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   flex-shrink: 0;
 }
@@ -755,14 +757,14 @@ function formatSignal(value) {
   gap: 6px;
   font-size: 16px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   white-space: nowrap;
 }
 
 .gene-expression-label {
   font-size: 16px;
   font-weight: 600;
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 
 .select {
@@ -770,8 +772,8 @@ function formatSignal(value) {
   border: 1px solid #cbd5e1;
   border-radius: 2px;
   font-size: 16px;
-  background: white;
-  color: #1a202c;
+  background: var(--pdw-surface);
+  color: var(--pdw-text);
   cursor: pointer;
 }
 
@@ -781,8 +783,8 @@ function formatSignal(value) {
 
 .select:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--pdw-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
 .gene-input-wrapper {
@@ -796,8 +798,8 @@ function formatSignal(value) {
   border: 1px solid #cbd5e1;
   border-radius: 2px;
   font-size: 16px;
-  background: white;
-  color: #1a202c;
+  background: var(--pdw-surface);
+  color: var(--pdw-text);
   min-width: 0;
   box-sizing: border-box;
 }
@@ -812,65 +814,17 @@ function formatSignal(value) {
 
 .gene-input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--pdw-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
-.visualize-btn {
-  padding: 4px 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 2px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-}
 
-.visualize-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-}
 
-.visualize-btn:disabled {
-  background: #94a3b8;
-  cursor: not-allowed;
-  opacity: 0.7;
-  transform: none;
-  box-shadow: none;
-}
 
-.plot-type-toggle {
-  display: flex;
-  gap: 0;
-}
 
-.toggle-btn {
-  padding: 3px 10px;
-  background: white;
-  border: 1px solid #cbd5e1;
-  margin-left: -1px;
-  font-size: 16px;
-  font-weight: 500;
-  color: #64748b;
-  cursor: pointer;
-}
 
-.toggle-btn:hover:not(:disabled) {
-  border-color: #cbd5e1;
-  background: #f8fafc;
-}
 
-.toggle-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
 
-.toggle-btn.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-color: #667eea;
-  color: white;
-}
 
 .checkbox-label {
   display: flex;
@@ -878,7 +832,7 @@ function formatSignal(value) {
   gap: 4px;
   font-size: 16px;
   font-weight: 500;
-  color: #1a202c;
+  color: var(--pdw-text);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -892,13 +846,13 @@ function formatSignal(value) {
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: #667eea;
+  accent-color: var(--pdw-primary);
 }
 
 .hint {
   margin: -12px 0 0;
   font-size: 16px;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   line-height: 1.4;
 }
 
@@ -906,8 +860,8 @@ function formatSignal(value) {
   flex: 1;
   min-width: 0;
   position: relative;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--pdw-surface);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   min-height: 0;
   display: flex;
@@ -922,11 +876,11 @@ function formatSignal(value) {
 }
 
 .link-summary {
-  color: #64748b;
+  color: var(--pdw-text-muted);
 }
 
 .region-label strong {
-  color: #667eea;
+  color: var(--pdw-primary);
   margin-right: 6px;
 }
 
@@ -955,15 +909,15 @@ function formatSignal(value) {
   justify-content: center;
   align-items: center;
   height: 100%;
-  background: white;
+  background: var(--pdw-surface);
 }
 
 .empty-card {
   max-width: 420px;
   padding: 24px 28px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
-  background: #f8fafc;
+  background: var(--pdw-surface-muted);
   text-align: center;
 }
 
@@ -971,21 +925,21 @@ function formatSignal(value) {
   margin: 0 0 8px;
   font-size: 16px;
   font-weight: 600;
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 
 .empty-text {
   margin: 0;
   font-size: 16px;
   line-height: 1.5;
-  color: #64748b;
+  color: var(--pdw-text-muted);
 }
 
 .spinner {
   width: 60px;
   height: 60px;
   border: 5px solid #f3f3f3;
-  border-top: 5px solid #667eea;
+  border-top: 5px solid var(--pdw-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -993,7 +947,7 @@ function formatSignal(value) {
 .loading-text {
   margin-top: 20px;
   font-size: 16px;
-  color: #64748b;
+  color: var(--pdw-text-muted);
 }
 
 .loading-overlay {
@@ -1011,7 +965,7 @@ function formatSignal(value) {
   width: 40px;
   height: 40px;
   border: 3px solid #f3f3f3;
-  border-top: 3px solid #667eea;
+  border-top: 3px solid var(--pdw-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;

@@ -1,6 +1,6 @@
 <template>
   <slot></slot>
-  <div class="proportion-plot-wrap">
+  <div class="pdw-theme proportion-plot-wrap">
     <ProportionPlot
       :data-path="resolvedDataPath"
       :config="props.config"
@@ -37,7 +37,7 @@ const resolvedDataPath = computed(
   width: 100%;
   height: 100%;
   padding: 0;
-  background: white;
+  background: var(--pdw-surface);
   box-sizing: border-box;
   overflow: hidden;
 }

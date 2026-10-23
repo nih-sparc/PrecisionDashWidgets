@@ -1,9 +1,9 @@
 <template>
   <div
-    v-if="options.length > 1"
-    class="reduction-toggle"
+    v-if="options.length > (hideSingle ? 1 : 0)"
+    class="segmented-toggle"
     role="radiogroup"
-    aria-label="Cell map"
+    :aria-label="ariaLabel"
   >
     <button
       v-for="opt in options"
@@ -12,7 +12,8 @@
       role="radio"
       :aria-checked="opt.key === modelValue"
       :class="{ active: opt.key === modelValue }"
-      :disabled="disabled"
+      :disabled="disabled || opt.disabled"
+      :title="opt.title"
       @click="$emit('update:modelValue', opt.key)"
     >
       {{ opt.label }}
@@ -21,51 +22,59 @@
 </template>
 
 <script setup>
-// Segmented control for picking a cell map (e.g. RNA / ATAC / WNN UMAP).
-// Renders nothing when there is only one option.
+// Segmented control for choosing one of a few options (cell map, plot type, signal mode…).
+// The theme's secondary style; the selected option takes the primary color.
 defineProps({
-  modelValue: { type: String, default: null },
-  options: { type: Array, default: () => [] }, // [{ key, label }]
+  modelValue: { type: [String, Number], default: null },
+  options: { type: Array, default: () => [] }, // [{ key, label, disabled?, title? }]
   disabled: { type: Boolean, default: false },
+  ariaLabel: { type: String, default: null },
+  // Render nothing when there's only one option (e.g. a dataset with one cell map)
+  hideSingle: { type: Boolean, default: false },
 });
 defineEmits(["update:modelValue"]);
 </script>
 
 <style scoped>
-.reduction-toggle {
+.segmented-toggle {
   display: inline-flex;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border: 1px solid var(--pdw-border);
+  border-radius: var(--pdw-radius);
   overflow: hidden;
   flex-shrink: 0;
 }
 
-.reduction-toggle button {
-  padding: 4px 10px;
+.segmented-toggle button {
+  padding: 4px 12px;
   font-size: 16px;
   font-weight: 500;
-  color: #64748b;
-  background: white;
+  color: var(--pdw-text-muted);
+  background: var(--pdw-surface);
   border: none;
-  border-left: 1px solid #e2e8f0;
+  border-left: 1px solid var(--pdw-border);
   cursor: pointer;
 }
 
-.reduction-toggle button:first-child {
+.segmented-toggle button:first-child {
   border-left: none;
 }
 
-.reduction-toggle button:hover:not(:disabled):not(.active) {
-  background: #f8fafc;
-  color: #1a202c;
+.segmented-toggle button:hover:not(:disabled):not(.active) {
+  background: var(--pdw-surface-muted);
+  color: var(--pdw-text);
 }
 
-.reduction-toggle button.active {
-  background: #667eea;
-  color: white;
+.segmented-toggle button.active {
+  background: var(--pdw-primary);
+  color: var(--pdw-primary-contrast);
 }
 
-.reduction-toggle button:disabled {
+.segmented-toggle button:focus-visible {
+  outline: 2px solid var(--pdw-primary);
+  outline-offset: -2px;
+}
+
+.segmented-toggle button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }

@@ -1,5 +1,5 @@
 <template>
-  <div class="umap-comparison-dashboard">
+  <div class="pdw-theme umap-comparison-dashboard">
     <!-- Loading State -->
     <div v-if="loading" class="loading-container">
       <div class="spinner"></div>
@@ -33,8 +33,10 @@
                   </option>
                 </select>
                 <!-- Cell map applies to both panels -->
-                <ReductionToggle
+                <SegmentedToggle
                   v-model="selectedReduction"
+                  hide-single
+                  aria-label="Cell map"
                   :options="reductionOptions"
                   class="cell-map-toggle"
                   title="Cell map (applies to both panels)"
@@ -145,7 +147,7 @@
                 <button
                   @click="handleGeneSelect"
                   :disabled="!geneSearch.trim() || geneLoading"
-                  class="visualize-btn"
+                  class="visualize-btn pdw-btn pdw-btn--primary"
                 >
                   {{ geneLoading ? "Loading..." : "Visualize" }}
                 </button>
@@ -191,7 +193,7 @@ import * as d3 from "d3";
 import createRegl from "regl";
 import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
-import ReductionToggle from "../shared/ReductionToggle.vue";
+import SegmentedToggle from "../shared/SegmentedToggle.vue";
 import { getMetadataColumns, getCategoricalColumns, getExternalLink } from "../../config/datasetConfig.js";
 
 // Props
@@ -1830,7 +1832,7 @@ function formatValue(key, value) {
   flex: 1;
   min-height: 0;
   width: 100%;
-  background: #f8fafc;
+  background: var(--pdw-surface-muted);
 }
 .dashboard {
   display: flex;
@@ -1844,8 +1846,8 @@ function formatValue(key, value) {
   display: flex;
   flex-direction: column;
   gap: 0;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--pdw-surface);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   padding: 12px 16px;
   min-height: 0;
@@ -1880,7 +1882,7 @@ function formatValue(key, value) {
   min-width: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #1a202c;
+  color: var(--pdw-text);
   white-space: nowrap;
 }
 
@@ -1888,11 +1890,11 @@ function formatValue(key, value) {
   flex: 1;
   min-width: 0;
   padding: 10px 14px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--pdw-border);
   border-radius: 2px;
   font-size: 16px;
-  background: white;
-  color: #1a202c;
+  background: var(--pdw-surface);
+  color: var(--pdw-text);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -1903,8 +1905,8 @@ function formatValue(key, value) {
 
 .select:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--pdw-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
 .gene-input-wrapper {
@@ -1917,11 +1919,11 @@ function formatValue(key, value) {
 .gene-input {
   flex: 1;
   padding: 10px 14px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--pdw-border);
   border-radius: 2px;
   font-size: 16px;
-  background: white;
-  color: #1a202c;
+  background: var(--pdw-surface);
+  color: var(--pdw-text);
   transition: all 0.2s;
   min-width: 0;
   box-sizing: border-box;
@@ -1937,8 +1939,8 @@ function formatValue(key, value) {
 
 .gene-input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--pdw-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
 .cell-map-toggle {
@@ -1950,37 +1952,14 @@ function formatValue(key, value) {
   font-size: 16px;
 }
 
-.visualize-btn {
-  padding: 10px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 2px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
-}
 
-.visualize-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-}
 
-.visualize-btn:disabled {
-  background: #94a3b8;
-  cursor: not-allowed;
-  opacity: 0.7;
-  transform: none;
-  box-shadow: none;
-}
 
 .canvas-container {
   flex: 1;
   position: relative;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--pdw-surface);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   min-height: 0;
   display: flex;
@@ -2001,8 +1980,8 @@ function formatValue(key, value) {
 }
 
 .legend {
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--pdw-surface);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   padding: 10px 12px;
   /* fixed, so the legend appearing never changes the canvas area */
@@ -2037,7 +2016,7 @@ function formatValue(key, value) {
 .legend-title {
   font-size: 16px;
   font-weight: 600;
-  color: #1a202c;
+  color: var(--pdw-text);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0;
@@ -2045,11 +2024,11 @@ function formatValue(key, value) {
 
 .legend-toggle {
   background: transparent;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--pdw-border);
   border-radius: 4px;
   padding: 4px 8px;
   cursor: pointer;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   font-size: 16px;
   transition: all 0.2s;
   display: flex;
@@ -2060,9 +2039,9 @@ function formatValue(key, value) {
 }
 
 .legend-toggle:hover {
-  background: #f8fafc;
-  border-color: #667eea;
-  color: #667eea;
+  background: var(--pdw-surface-muted);
+  border-color: var(--pdw-primary);
+  color: var(--pdw-primary);
 }
 
 .legend-item {
@@ -2070,7 +2049,7 @@ function formatValue(key, value) {
   align-items: center;
   gap: 8px;
   font-size: 16px;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
@@ -2081,7 +2060,7 @@ function formatValue(key, value) {
   flex-wrap: wrap;
 }
 .legend-item:hover {
-  background: #f8fafc;
+  background: var(--pdw-surface-muted);
 }
 
 .legend-color {
@@ -2104,7 +2083,7 @@ function formatValue(key, value) {
 }
 
 .legend-x {
-  color: #64748b;
+  color: var(--pdw-text-muted);
   font-size: 16px;
   font-weight: bold;
   line-height: 1;
@@ -2121,13 +2100,13 @@ function formatValue(key, value) {
 
 .legend-link:hover {
   text-decoration: underline;
-  color: #667eea;
+  color: var(--pdw-primary);
 }
 
 .tooltip {
   position: fixed;
-  background: white;
-  border: 2px solid #667eea;
+  background: var(--pdw-surface);
+  border: 2px solid var(--pdw-primary);
   border-radius: 6px;
   padding: 12px;
   pointer-events: none;
@@ -2144,10 +2123,10 @@ function formatValue(key, value) {
 .tooltip-header {
   font-weight: 700;
   font-size: 16px;
-  color: #1a202c;
+  color: var(--pdw-text);
   margin-bottom: 6px;
   padding-bottom: 6px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--pdw-border);
 }
 
 .tooltip-row {
@@ -2160,13 +2139,13 @@ function formatValue(key, value) {
 
 .tooltip-label {
   font-weight: 600;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   margin: 0;
 }
 
 .tooltip-value {
   font-weight: 500;
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 
 .tooltip-gene {
@@ -2183,14 +2162,14 @@ function formatValue(key, value) {
   height: 20px;
   background: linear-gradient(to right, #c8c8c8 0%, #0000ff 100%);
   border-radius: 2px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--pdw-border);
 }
 
 .gradient-labels {
   display: flex;
   justify-content: space-between;
   font-size: 16px;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   font-weight: 500;
 }
 
@@ -2207,7 +2186,7 @@ function formatValue(key, value) {
   width: 60px;
   height: 60px;
   border: 5px solid #f3f3f3;
-  border-top: 5px solid #667eea;
+  border-top: 5px solid var(--pdw-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -2215,7 +2194,7 @@ function formatValue(key, value) {
 .loading-text {
   margin-top: 20px;
   font-size: 16px;
-  color: #64748b;
+  color: var(--pdw-text-muted);
 }
 
 .loading-overlay {
@@ -2233,7 +2212,7 @@ function formatValue(key, value) {
   width: 40px;
   height: 40px;
   border: 3px solid #f3f3f3;
-  border-top: 3px solid #667eea;
+  border-top: 3px solid var(--pdw-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;

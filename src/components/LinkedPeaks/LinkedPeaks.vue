@@ -1,6 +1,6 @@
 <template>
   <slot></slot>
-  <div class="linked-peaks-wrap">
+  <div class="pdw-theme linked-peaks-wrap">
     <LinkedPeaksTable
       :gene="PrecisionVars.selectedChromatinGene ?? undefined"
       :focused-peak="PrecisionVars.chromatinFocus"
@@ -51,7 +51,7 @@ function handleVarsUpdate(key: string, value: string | null) {
   height: 100%;
   width: 100%;
   padding: 0;
-  background: white;
+  background: var(--pdw-surface);
   box-sizing: border-box;
   overflow: hidden;
 }
