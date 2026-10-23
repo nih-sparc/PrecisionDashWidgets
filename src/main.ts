@@ -4,6 +4,7 @@ import ElementPlus from 'element-plus';
 import { createPinia } from "pinia";
 import 'element-plus/dist/index.css';
 import 'pennsieve-dashboard/style.css'
+import './styles/theme.css'
 
 const pinia = createPinia()
 const app = createApp(App);

@@ -33,7 +33,7 @@ cd DashboardRepo/packages/PrecisionDashWidgets
 # Install dependencies
 npm install
 
-# Start the dev server (opens at http://localhost:5173)
+# Start the dev server (http://localhost:3000; api2's CORS allows this port)
 npm run dev
 ```
 
@@ -343,6 +343,57 @@ store.setSelectedMetadataColumn('cluster')
 | `selectedGene1` | GeneExpression | First gene in co-expression |
 | `selectedGene2` | GeneExpression | Second gene in co-expression |
 | `selectedGeneX` | ViolinPlot | Selected gene for distribution plot |
+
+---
+
+## Theming
+
+Precision widgets fit the app they're embedded in, and the page that renders them can still
+give them their own look. Colors resolve in two levels (plus a fallback):
+
+1. **The host app's theme (default).** Widgets read the variables the host already sets for
+   Element Plus and the Pennsieve Dashboard, so in most apps they match with no setup:
+
+   | Precision uses | Read from the host |
+   |---|---|
+   | Primary color (action buttons, selected toggle option, highlights) | `--el-color-primary` |
+   | Primary hover | `--el-color-primary-dark-2` |
+   | Text / muted text | `--dash-text-dark` / `--dash-text-medium` |
+   | Borders | `--el-border-color` |
+   | Panel background | `--dash-background` |
+
+2. **Precision overrides (per page).** To make Precision look different from the rest of the
+   app, set `--precision-*` variables on an element that wraps the dashboard. They apply only
+   to Precision widgets:
+
+   ```css
+   .dashboard-app {
+     --precision-primary: #243d8e;
+     --precision-primary-hover: #1b2f6e;
+   }
+   ```
+
+   | Variable | Used for |
+   |---|---|
+   | `--precision-primary` | Primary buttons, selected toggle option, focus rings, highlights |
+   | `--precision-primary-hover` | Primary button hover |
+   | `--precision-primary-contrast` | Text on primary (default `#fff`) |
+   | `--precision-primary-soft` | Light primary tints (default: 12% of the primary) |
+   | `--precision-text`, `--precision-text-muted` | Text |
+   | `--precision-border` | Borders |
+   | `--precision-surface`, `--precision-surface-muted` | Panel and hover backgrounds |
+   | `--precision-radius` | Button and toggle corner radius |
+
+3. **Fallback.** With neither set, Precision uses its own defaults (primary `#667eea`).
+
+Buttons follow one rule: **primary** (filled) only for actions that load or change data, such
+as *Visualize* and *Plot*; everything else is **secondary** (outlined). Either/or choices, such as
+the cell map (RNA / ATAC / WNN), signal (Normalized / Raw), and plot type (Violin / Box), all use
+the same segmented toggle.
+
+The variables are defined in `src/styles/theme.css` on the `pdw-theme` class, which every
+widget's root element has. Avoid app-wide rules like `.el-button { background: … !important }`
+around the dashboard: Precision doesn't use Element Plus buttons, but other widgets may.
 
 ---
 

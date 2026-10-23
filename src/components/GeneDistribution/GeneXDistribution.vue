@@ -1,6 +1,6 @@
 <template>
   <slot></slot>
-  <div class="gene-x-expression-wrap">
+  <div class="pdw-theme gene-x-expression-wrap">
     <ViolinPlot
       :gene="PrecisionVars.selectedGeneX ?? undefined"
       :metadataColumn="PrecisionVars.selectedMetadataColumn ?? undefined"
@@ -56,7 +56,7 @@ function handleVarsUpdate(key: string, value: string | null) {
   height: 100%;
   width: 100%;
   padding: 0;
-  background: white;
+  background: var(--pdw-surface);
   box-sizing: border-box;
   overflow: hidden;
 }

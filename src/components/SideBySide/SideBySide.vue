@@ -1,6 +1,6 @@
 <template>
   <slot></slot>
-  <div class="side-by-side-wrap">
+  <div class="pdw-theme side-by-side-wrap">
     <SideBySide
       :gene="PrecisionVars.selectedGene ?? undefined"
       :metadataColumn="PrecisionVars.selectedMetadataColumn ?? undefined"
@@ -45,7 +45,7 @@ onMounted(() => {
   height: 100%;
   width: 100%;
   padding: 0;
-  background: white;
+  background: var(--pdw-surface);
   box-sizing: border-box;
   overflow: hidden;
 }

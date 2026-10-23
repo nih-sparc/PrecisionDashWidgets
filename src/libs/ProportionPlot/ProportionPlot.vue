@@ -1,5 +1,5 @@
 <template>
-  <div class="pp-container">
+  <div class="pdw-theme pp-container">
     <!-- Loading State -->
     <div v-if="loading" class="loading-container">
       <div class="spinner"></div>
@@ -47,7 +47,7 @@
           </label>
 
           <button
-            class="visualize-btn"
+            class="visualize-btn pdw-btn pdw-btn--primary"
             :disabled="!xCol || !yCol || isLoading"
             @click="plot"
           >
@@ -437,7 +437,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
           .attr("transform", "rotate(-45)")
           .style("text-anchor", "end")
           .style("font-size", "16px")
-          .style("fill", "#667eea")
+          .style("fill", "var(--pdw-primary)")
           .style("cursor", "pointer");
       }
     });
@@ -505,7 +505,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background: white;
+  background: var(--pdw-surface);
   padding: 12px 16px;
   box-sizing: border-box;
 }
@@ -526,8 +526,8 @@ function drawPlot({ rows, xLevels, yLevels }) {
   flex-direction: column;
   gap: 12px;
   padding: 16px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--pdw-surface-muted);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   flex-shrink: 0;
   overflow-y: auto;
@@ -539,16 +539,16 @@ function drawPlot({ rows, xLevels, yLevels }) {
   gap: 8px;
   font-size: 16px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--pdw-text-muted);
 }
 
 .select {
   padding: 10px 14px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--pdw-border);
   border-radius: 2px;
   font-size: 16px;
-  background: white;
-  color: #1a202c;
+  background: var(--pdw-surface);
+  color: var(--pdw-text);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -559,33 +559,12 @@ function drawPlot({ rows, xLevels, yLevels }) {
 
 .select:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--pdw-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
-.visualize-btn {
-  padding: 10px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 2px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
-}
 
-.visualize-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-}
 
-.visualize-btn:disabled {
-  background: #94a3b8;
-  cursor: not-allowed;
-  opacity: 0.7;
-}
 
 .pp-message {
   font-size: 16px;
@@ -608,10 +587,10 @@ function drawPlot({ rows, xLevels, yLevels }) {
 .pp-tooltip-header {
   font-weight: 700;
   font-size: 16px;
-  color: #1a202c;
+  color: var(--pdw-text);
   margin-bottom: 6px;
   padding-bottom: 4px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--pdw-border);
 }
 
 .pp-tooltip-row {
@@ -628,7 +607,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
 
 .pp-tooltip-value {
   font-weight: 600;
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 
 .plot-and-legend {
@@ -641,8 +620,8 @@ function drawPlot({ rows, xLevels, yLevels }) {
 .plot-container {
   flex: 1;
   position: relative;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--pdw-surface);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   min-height: 0;
   display: flex;
@@ -655,8 +634,8 @@ function drawPlot({ rows, xLevels, yLevels }) {
   flex-wrap: wrap;
   gap: 4px 12px;
   padding: 8px 12px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--pdw-surface-muted);
+  border: 1px solid var(--pdw-border);
   border-top: none;
   border-radius: 0 0 2px 2px;
 }
@@ -695,7 +674,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
   width: 60px;
   height: 60px;
   border: 5px solid #f3f3f3;
-  border-top: 5px solid #667eea;
+  border-top: 5px solid var(--pdw-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -703,7 +682,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
 .loading-text {
   margin-top: 20px;
   font-size: 16px;
-  color: #64748b;
+  color: var(--pdw-text-muted);
 }
 
 .loading-overlay {
@@ -721,7 +700,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
   width: 40px;
   height: 40px;
   border: 3px solid #f3f3f3;
-  border-top: 3px solid #667eea;
+  border-top: 3px solid var(--pdw-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;

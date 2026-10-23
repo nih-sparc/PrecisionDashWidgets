@@ -1,5 +1,5 @@
 <template>
-  <div class="gene-coexpression-viewer">
+  <div class="pdw-theme gene-coexpression-viewer">
     <!-- LEFT PANE: controls + stats -->
     <div class="viewer-left">
       <div class="controls-panel">
@@ -72,7 +72,7 @@
             <button
               @click="visualize"
               :disabled="!canVisualize || loading"
-              class="visualize-btn"
+              class="visualize-btn pdw-btn pdw-btn--primary"
             >
               <span v-if="loading"
                 ><span class="btn-spinner"></span>Loading...</span
@@ -95,8 +95,10 @@
                 Visualize Co-expression
               </span>
             </button>
-            <ReductionToggle
+            <SegmentedToggle
               v-model="selectedReduction"
+              hide-single
+              aria-label="Cell map"
               :options="reductionOptions"
               :disabled="loading"
               class="cell-map-toggle"
@@ -362,7 +364,7 @@ import * as d3 from "d3";
 import createRegl from "regl";
 import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
-import ReductionToggle from "../shared/ReductionToggle.vue";
+import SegmentedToggle from "../shared/SegmentedToggle.vue";
 
 // Props
 const props = defineProps({
@@ -1289,8 +1291,8 @@ async function updateVisualization() {
   flex: 1;
 }
 .controls-panel {
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--pdw-surface);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   padding: 0;
   flex: 1;
@@ -1299,10 +1301,10 @@ async function updateVisualization() {
 .stats-panel {
   background: linear-gradient(
     135deg,
-    rgba(102, 126, 234, 0.05) 0%,
+    color-mix(in srgb, var(--pdw-primary) 5%, transparent) 0%,
     rgba(118, 75, 162, 0.05) 100%
   );
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   padding: 12px;
   display: grid;
@@ -1335,12 +1337,12 @@ async function updateVisualization() {
   gap: 12px;
   font-size: 16px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   min-height: 20px;
 }
 .gene-number {
   font-weight: 600;
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 .selected-gene {
   font-weight: 600;
@@ -1348,12 +1350,12 @@ async function updateVisualization() {
 }
 .gene-input {
   padding: 10px 14px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--pdw-border);
   border-radius: 2px;
   font-size: 16px;
   transition: all 0.2s;
-  background: white;
-  color: #1a202c;
+  background: var(--pdw-surface);
+  color: var(--pdw-text);
   min-width: 0;
   box-sizing: border-box;
 }
@@ -1362,11 +1364,11 @@ async function updateVisualization() {
 }
 .gene-input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--pdw-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 .gene-input:disabled {
-  background-color: #f8fafc;
+  background-color: var(--pdw-surface-muted);
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -1403,34 +1405,6 @@ async function updateVisualization() {
   font-size: 16px;
 }
 
-.visualize-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 2px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-height: 44px;
-  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
-}
-.visualize-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-}
-.visualize-btn:disabled {
-  background: #94a3b8;
-  cursor: not-allowed;
-  transform: none;
-  opacity: 0.7;
-  box-shadow: none;
-}
-
 .loading-overlay {
   position: fixed;
   inset: 0;
@@ -1446,7 +1420,7 @@ async function updateVisualization() {
   width: 60px;
   height: 60px;
   border: 5px solid #f3f3f3;
-  border-top: 5px solid var(--primary-color);
+  border-top: 5px solid var(--pdw-primary);
   border-radius: 2px;
   animation: spin 1s linear infinite;
 }
@@ -1489,7 +1463,7 @@ async function updateVisualization() {
   display: flex;
   flex-direction: column;
   padding: 8px;
-  background: white;
+  background: var(--pdw-surface);
   border-radius: 2px;
 }
 .stat-label {
@@ -1497,19 +1471,19 @@ async function updateVisualization() {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-secondary);
+  color: var(--pdw-text-muted);
 }
 .stat-value {
   font-size: 28px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--pdw-text);
 }
 
 .chart-container {
   min-height: 0;
   display: flex;
-  background: white;
-  border: 1px solid var(--border-color);
+  background: var(--pdw-surface);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   padding: 24px;
   flex: 1;
@@ -1533,11 +1507,11 @@ async function updateVisualization() {
   gap: 10px;
   padding: 6px 14px;
   background: rgba(255, 255, 255, 0.92);
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--pdw-border);
   border-radius: 999px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
   font-size: 16px;
-  color: var(--text-secondary);
+  color: var(--pdw-text-muted);
 }
 .chart-loading p {
   margin: 0;
@@ -1551,7 +1525,7 @@ async function updateVisualization() {
   width: 40px;
   height: 40px;
   border: 3px solid #f3f3f3;
-  border-top: 3px solid var(--primary-color);
+  border-top: 3px solid var(--pdw-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;
@@ -1559,8 +1533,8 @@ async function updateVisualization() {
 
 .tooltip {
   position: fixed;
-  background: white;
-  border: 2px solid #667eea;
+  background: var(--pdw-surface);
+  border: 2px solid var(--pdw-primary);
   border-radius: 6px;
   padding: 12px;
   pointer-events: none;
@@ -1576,10 +1550,10 @@ async function updateVisualization() {
 .tooltip-header {
   font-weight: 700;
   font-size: 16px;
-  color: #1a202c;
+  color: var(--pdw-text);
   margin-bottom: 6px;
   padding-bottom: 6px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--pdw-border);
 }
 .tooltip-row {
   display: flex;
@@ -1590,12 +1564,12 @@ async function updateVisualization() {
 }
 .tooltip-label {
   font-weight: 600;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   margin: 0;
 }
 .tooltip-value {
   font-weight: 500;
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 
 .legend-container {
@@ -1609,8 +1583,8 @@ async function updateVisualization() {
   width: 100%;
   display: flex;
   gap: 12px;
-  background: white;
-  border: 1px solid var(--border-color);
+  background: var(--pdw-surface);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   padding: 16px;
 }
@@ -1641,8 +1615,8 @@ async function updateVisualization() {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 .color-picker:focus {
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--pdw-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
 /* Floating Color Mixer */
@@ -1652,8 +1626,8 @@ async function updateVisualization() {
   right: 16px;
   width: 48px;
   height: 48px;
-  background: white;
-  border: 2px solid #e2e8f0;
+  background: var(--pdw-surface);
+  border: 2px solid var(--pdw-border);
   border-radius: 12px;
   cursor: pointer;
   display: flex;
@@ -1661,12 +1635,12 @@ async function updateVisualization() {
   justify-content: center;
   transition: all 0.2s ease;
   z-index: 10;
-  color: #64748b;
+  color: var(--pdw-text-muted);
 }
 .floating-mixer-toggle:hover {
-  background: #f8fafc;
+  background: var(--pdw-surface-muted);
   border-color: #cbd5e1;
-  color: #1a202c;
+  color: var(--pdw-text);
   transform: translateY(-2px);
 }
 
@@ -1674,8 +1648,8 @@ async function updateVisualization() {
   position: absolute;
   bottom: 51px;
   right: 16px;
-  background: white;
-  border: 2px solid #e2e8f0;
+  background: var(--pdw-surface);
+  border: 2px solid var(--pdw-border);
   z-index: 10;
   min-width: 250px;
   overflow: hidden;
@@ -1686,10 +1660,10 @@ async function updateVisualization() {
   align-items: center;
   padding: 4px;
   background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--pdw-border);
   font-size: 16px;
   font-weight: 600;
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 .floating-mixer-close {
   background: none;
@@ -1697,7 +1671,7 @@ async function updateVisualization() {
   padding: 4px;
   border-radius: 4px;
   cursor: pointer;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   transition: all 0.2s;
   display: flex;
   align-items: center;
@@ -1705,7 +1679,7 @@ async function updateVisualization() {
 }
 .floating-mixer-close:hover {
   background: rgba(100, 116, 139, 0.1);
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 
 .floating-gradient-container {
@@ -1716,7 +1690,7 @@ async function updateVisualization() {
   padding: 16px;
 }
 .gradient-canvas {
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--pdw-border);
   border-radius: 2px;
 }
 .gradient-labels {
@@ -1728,7 +1702,7 @@ async function updateVisualization() {
   pointer-events: none;
   font-size: 16px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--pdw-text-muted);
 }
 .y-axis-label {
   position: absolute;
@@ -1738,7 +1712,7 @@ async function updateVisualization() {
   transform-origin: center;
   white-space: nowrap;
   z-index: 10;
-  background: white;
+  background: var(--pdw-surface);
   padding: 2px 4px;
   border-radius: 2px;
   font-size: 16px;
@@ -1750,7 +1724,7 @@ async function updateVisualization() {
   transform: translateX(-50%);
   white-space: nowrap;
   z-index: 10;
-  background: white;
+  background: var(--pdw-surface);
   padding: 2px 4px;
   border-radius: 2px;
   font-size: 16px;
@@ -1774,7 +1748,7 @@ async function updateVisualization() {
 .empty-state {
   text-align: center;
   padding: 80px 20px;
-  color: var(--text-secondary);
+  color: var(--pdw-text-muted);
 }
 .empty-icon {
   font-size: 64px;
@@ -1784,7 +1758,7 @@ async function updateVisualization() {
 .empty-state h3 {
   font-size: 24px;
   margin-bottom: 12px;
-  color: var(--text-primary);
+  color: var(--pdw-text);
 }
 .empty-state p {
   font-size: 16px;

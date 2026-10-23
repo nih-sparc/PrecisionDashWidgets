@@ -1,5 +1,5 @@
 <template>
-  <div class="linked-peaks-container">
+  <div class="pdw-theme linked-peaks-container">
     <!-- Loading State -->
     <div v-if="loading" class="loading-container">
       <div class="spinner"></div>
@@ -45,7 +45,7 @@
               <button
                 @click="handleGeneSelect"
                 :disabled="!geneSearch.trim() || dataLoading"
-                class="visualize-btn"
+                class="visualize-btn pdw-btn pdw-btn--primary"
               >
                 {{ dataLoading ? "Loading..." : "Show links" }}
               </button>
@@ -65,18 +65,7 @@
           </label>
 
           <label class="label">
-            <div class="plot-type-toggle">
-              <button
-                v-for="opt in DIRECTIONS"
-                :key="opt.value"
-                @click="direction = opt.value"
-                :class="{ active: direction === opt.value }"
-                class="toggle-btn"
-                :title="opt.title"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
+            <SegmentedToggle v-model="direction" aria-label="Link direction" :options="DIRECTIONS" />
           </label>
 
           <div
@@ -280,6 +269,7 @@
 </template>
 
 <script setup>
+import SegmentedToggle from "../shared/SegmentedToggle.vue";
 import { ref, shallowRef, computed, onBeforeUnmount, watch } from "vue";
 import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
 import {
@@ -309,9 +299,9 @@ const injectedConfig = useDatasetActiveConfig();
 const activeConfig = computed(() => props.config || injectedConfig.value || {});
 
 const DIRECTIONS = [
-  { value: "all", label: "All", title: "Positive and negative links" },
-  { value: "positive", label: "Positive", title: "Region opens as the gene goes up" },
-  { value: "negative", label: "Negative", title: "Region closes as the gene goes up" },
+  { key: "all", label: "All", title: "Positive and negative links" },
+  { key: "positive", label: "Positive", title: "Region opens as the gene goes up" },
+  { key: "negative", label: "Negative", title: "Region closes as the gene goes up" },
 ];
 
 const manager = shallowRef(null);
@@ -487,7 +477,7 @@ function corrWidth(r) {
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background: white;
+  background: var(--pdw-surface);
   padding: 12px 16px;
   box-sizing: border-box;
 }
@@ -508,8 +498,8 @@ function corrWidth(r) {
   align-items: center;
   gap: 6px 16px;
   padding: 6px 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--pdw-surface-muted);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
   flex-shrink: 0;
 }
@@ -520,18 +510,18 @@ function corrWidth(r) {
   gap: 6px;
   font-size: 16px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   white-space: nowrap;
 }
 
 .label .value {
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 
 .gene-expression-label {
   font-size: 16px;
   font-weight: 600;
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 
 .select {
@@ -539,16 +529,16 @@ function corrWidth(r) {
   border: 1px solid #cbd5e1;
   border-radius: 2px;
   font-size: 16px;
-  background: white;
-  color: #1a202c;
+  background: var(--pdw-surface);
+  color: var(--pdw-text);
   cursor: pointer;
 }
 
 .select:focus,
 .gene-input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--pdw-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
 .gene-input-wrapper {
@@ -562,8 +552,8 @@ function corrWidth(r) {
   border: 1px solid #cbd5e1;
   border-radius: 2px;
   font-size: 16px;
-  background: white;
-  color: #1a202c;
+  background: var(--pdw-surface);
+  color: var(--pdw-text);
   min-width: 0;
   box-sizing: border-box;
 }
@@ -572,50 +562,15 @@ function corrWidth(r) {
   font-size: 16px;
 }
 
-.visualize-btn {
-  padding: 4px 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 2px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-}
 
-.visualize-btn:disabled {
-  background: #94a3b8;
-  cursor: not-allowed;
-  opacity: 0.7;
-  box-shadow: none;
-}
 
 .slider {
   width: 90px;
-  accent-color: #667eea;
+  accent-color: var(--pdw-primary);
 }
 
-.plot-type-toggle {
-  display: flex;
-  gap: 0;
-}
 
-.toggle-btn {
-  padding: 3px 10px;
-  background: white;
-  border: 1px solid #cbd5e1;
-  margin-left: -1px;
-  font-size: 16px;
-  font-weight: 500;
-  color: #64748b;
-  cursor: pointer;
-}
 
-.toggle-btn.active {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-color: #667eea;
-  color: white;
-}
 
 .checkbox-label {
   display: flex;
@@ -623,7 +578,7 @@ function corrWidth(r) {
   gap: 4px;
   font-size: 16px;
   font-weight: 500;
-  color: #1a202c;
+  color: var(--pdw-text);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -636,13 +591,13 @@ function corrWidth(r) {
 .checkbox {
   width: 16px;
   height: 16px;
-  accent-color: #667eea;
+  accent-color: var(--pdw-primary);
 }
 
 .hint {
   margin: 0;
   font-size: 16px;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   line-height: 1.4;
 }
 
@@ -665,20 +620,20 @@ function corrWidth(r) {
 .summary-item {
   flex: 1;
   padding: 4px 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--pdw-surface-muted);
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
 }
 
 .summary-value {
   font-size: 16px;
   font-weight: 600;
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 
 .summary-label {
   font-size: 16px;
-  color: #64748b;
+  color: var(--pdw-text-muted);
 }
 
 .pos {
@@ -693,14 +648,14 @@ function corrWidth(r) {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--pdw-border);
 }
 
 .links-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 16px;
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 
 .links-table th {
@@ -712,14 +667,14 @@ function corrWidth(r) {
   font-size: 16px;
   color: #475569;
   padding: 6px 8px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--pdw-border);
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
 }
 
 .links-table th.sorted {
-  color: #667eea;
+  color: var(--pdw-primary);
 }
 
 .links-table td {
@@ -733,12 +688,12 @@ function corrWidth(r) {
 }
 
 .links-table tbody tr:hover {
-  background: #f8fafc;
+  background: var(--pdw-surface-muted);
 }
 
 .links-table tbody tr.selected {
   background: #eef2ff;
-  box-shadow: inset 3px 0 0 #667eea;
+  box-shadow: inset 3px 0 0 var(--pdw-primary);
 }
 
 .mono {
@@ -836,13 +791,13 @@ function corrWidth(r) {
   border: none;
   background: none;
   font-size: 16px;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   cursor: pointer;
   flex-shrink: 0;
 }
 
 .about-toggle:hover {
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 
 .chevron {
@@ -852,7 +807,7 @@ function corrWidth(r) {
 .footnote {
   margin: 0;
   font-size: 16px;
-  color: #64748b;
+  color: var(--pdw-text-muted);
   line-height: 1.5;
   flex-shrink: 0;
 }
@@ -870,15 +825,15 @@ function corrWidth(r) {
   justify-content: center;
   align-items: center;
   height: 100%;
-  background: white;
+  background: var(--pdw-surface);
 }
 
 .empty-card {
   max-width: 420px;
   padding: 24px 28px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--pdw-border);
   border-radius: 2px;
-  background: #f8fafc;
+  background: var(--pdw-surface-muted);
   text-align: center;
 }
 
@@ -886,21 +841,21 @@ function corrWidth(r) {
   margin: 0 0 8px;
   font-size: 16px;
   font-weight: 600;
-  color: #1a202c;
+  color: var(--pdw-text);
 }
 
 .empty-text {
   margin: 0;
   font-size: 16px;
   line-height: 1.5;
-  color: #64748b;
+  color: var(--pdw-text-muted);
 }
 
 .spinner {
   width: 60px;
   height: 60px;
   border: 5px solid #f3f3f3;
-  border-top: 5px solid #667eea;
+  border-top: 5px solid var(--pdw-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -908,7 +863,7 @@ function corrWidth(r) {
 .loading-text {
   margin-top: 20px;
   font-size: 16px;
-  color: #64748b;
+  color: var(--pdw-text-muted);
 }
 
 .loading-overlay {
@@ -926,7 +881,7 @@ function corrWidth(r) {
   width: 40px;
   height: 40px;
   border: 3px solid #f3f3f3;
-  border-top: 3px solid #667eea;
+  border-top: 3px solid var(--pdw-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;

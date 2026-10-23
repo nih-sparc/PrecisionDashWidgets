@@ -1,6 +1,6 @@
 <template>
   <slot></slot>
-  <div class="gene-coexpression-wrap">
+  <div class="pdw-theme gene-coexpression-wrap">
     <GeneCoexpressionViewer
       :gene1="PrecisionVars.selectedGene1 ?? undefined"
       :gene2="PrecisionVars.selectedGene2 ?? undefined"
@@ -45,7 +45,7 @@ onMounted(() => {
   height: 100%;
   width: 100%;
   padding: 0;
-  background: white;
+  background: var(--pdw-surface);
   box-sizing: border-box;
   overflow: hidden;
 }

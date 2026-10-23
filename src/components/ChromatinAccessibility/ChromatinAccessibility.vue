@@ -1,6 +1,6 @@
 <template>
   <slot></slot>
-  <div class="chromatin-wrap">
+  <div class="pdw-theme chromatin-wrap">
     <ChromatinViewer
       :gene="PrecisionVars.selectedChromatinGene ?? undefined"
       :focus="PrecisionVars.chromatinFocus"
@@ -50,7 +50,7 @@ function handleVarsUpdate(key: string, value: string | null) {
   height: 100%;
   width: 100%;
   padding: 0;
-  background: white;
+  background: var(--pdw-surface);
   box-sizing: border-box;
   overflow: hidden;
 }

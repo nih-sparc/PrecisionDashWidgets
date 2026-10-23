@@ -13,3 +13,4 @@ export {
   DASHBOARD_GLOBAL_VARS_KEY,
 } from "../useGlobalVars";
 import "@pennsieve-viz/core/style.css";
+import "../styles/theme.css";

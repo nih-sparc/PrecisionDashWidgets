@@ -35,8 +35,8 @@ const DATASETS = [
   {
     id: "human-drg-multiome",
     label: "Human DRG Multiome ATAC + RNA-seq",
-    // TODO: swap for the package published + processed in dev
-    packageId: "N:package:0a61d57f-38fd-4db8-b8ce-ba42266e0380",
+    // Published + processed on dev (seurat-processor, multiome with chromatin + links)
+    packageId: "N:package:3376584f-3c00-4945-8c04-05cb5996448a",
   },
 ];
 
