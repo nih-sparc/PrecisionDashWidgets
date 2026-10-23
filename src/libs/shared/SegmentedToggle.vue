@@ -38,6 +38,8 @@ defineEmits(["update:modelValue"]);
 <style scoped>
 .segmented-toggle {
   display: inline-flex;
+  /* Never stretch to fill a column layout (a flex column stretches its children) */
+  width: fit-content;
   border: 1px solid var(--pdw-border);
   border-radius: var(--pdw-radius);
   overflow: hidden;
