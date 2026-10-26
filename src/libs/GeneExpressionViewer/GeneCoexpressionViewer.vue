@@ -129,24 +129,30 @@
           }}</span>
         </div>
         <div class="stat-item">
-          <span class="stat-label" :style="{ color: gene1Color }"
-            >{{ gene1 }} expressing:</span
+          <span class="stat-label" :style="{ color: gene1Color }" :title="rnaStatsNote"
+            >{{ gene1 }} expressing (RNA):</span
           >
           <span class="stat-value"
             >{{ genesPending ? "…" : `${stats.gene1Expressing.toLocaleString()} (${stats.gene1Pct}%)` }}</span
           >
+          <span v-if="!genesPending" class="stat-sub"
+            >{{ gene1 }} only: {{ stats.gene1Only.toLocaleString() }} ({{ stats.gene1OnlyPct }}%)</span
+          >
         </div>
         <div class="stat-item">
-          <span class="stat-label" :style="{ color: gene2Color }"
-            >{{ gene2 }} expressing:</span
+          <span class="stat-label" :style="{ color: gene2Color }" :title="rnaStatsNote"
+            >{{ gene2 }} expressing (RNA):</span
           >
           <span class="stat-value"
             >{{ genesPending ? "…" : `${stats.gene2Expressing.toLocaleString()} (${stats.gene2Pct}%)` }}</span
           >
+          <span v-if="!genesPending" class="stat-sub"
+            >{{ gene2 }} only: {{ stats.gene2Only.toLocaleString() }} ({{ stats.gene2OnlyPct }}%)</span
+          >
         </div>
         <div class="stat-item">
-          <span class="stat-label" :style="{ color: coexpressColor }"
-            >Co-expressing:</span
+          <span class="stat-label" :style="{ color: coexpressColor }" :title="rnaStatsNote"
+            >Co-expressing (RNA):</span
           >
           <span class="stat-value"
             >{{ genesPending ? "…" : `${stats.coexpressing.toLocaleString()} (${stats.coexpressPct}%)` }}</span
@@ -428,13 +434,22 @@ const noExpressionColor = ref("#CCCCCC");
 // Co-expression boost factor
 const coexpressionBoostFactor = ref(1);
 
-// Stats
+// A cell expresses a gene when its RNA value (log-normalized data layer) is above this.
+// Stats always use RNA, whichever cell map (RNA / ATAC / WNN) is shown.
+const EXPRESSION_THRESHOLD = 0.1;
+const rnaStatsNote = `Cells with RNA expression above ${EXPRESSION_THRESHOLD} (log-normalized), in every cell map view`;
+
+// Stats: gene totals include co-expressing cells; "only" counts exclude them
 const stats = ref({
   totalCells: 0,
   gene1Expressing: 0,
   gene1Pct: 0,
+  gene1Only: 0,
+  gene1OnlyPct: 0,
   gene2Expressing: 0,
   gene2Pct: 0,
+  gene2Only: 0,
+  gene2OnlyPct: 0,
   coexpressing: 0,
   coexpressPct: 0,
 });
@@ -676,7 +691,7 @@ async function renderChart() {
   const maxExpr1 = Math.max(...allExpr1);
   const maxExpr2 = Math.max(...allExpr2);
 
-  const threshold = 0.1;
+  const threshold = EXPRESSION_THRESHOLD;
 
   // rgb guard 0–255
   const clamp255 = (v) => Math.max(0, Math.min(255, Math.round(v)));
@@ -768,24 +783,30 @@ async function renderChart() {
   points.sort((a, b) => a.zIndex - b.zIndex);
   pointsData.value = points;
 
-  // Stats
-  const g1Only = points.filter(
-    (p) => p.expr1 > threshold && p.expr2 <= threshold
-  ).length;
-  const g2Only = points.filter(
-    (p) => p.expr2 > threshold && p.expr1 <= threshold
-  ).length;
-  const coexp = points.filter(
-    (p) => p.expr1 > threshold && p.expr2 > threshold
-  ).length;
+  // Stats (RNA): each gene's total includes the co-expressing cells
+  let g1Total = 0;
+  let g2Total = 0;
+  let coexp = 0;
+  for (const p of points) {
+    const has1 = p.expr1 > threshold;
+    const has2 = p.expr2 > threshold;
+    if (has1) g1Total++;
+    if (has2) g2Total++;
+    if (has1 && has2) coexp++;
+  }
+  const pct = (n) => ((n / points.length) * 100).toFixed(1);
   stats.value = {
     totalCells: points.length,
-    gene1Expressing: g1Only,
-    gene1Pct: ((g1Only / points.length) * 100).toFixed(1),
-    gene2Expressing: g2Only,
-    gene2Pct: ((g2Only / points.length) * 100).toFixed(1),
+    gene1Expressing: g1Total,
+    gene1Pct: pct(g1Total),
+    gene1Only: g1Total - coexp,
+    gene1OnlyPct: pct(g1Total - coexp),
+    gene2Expressing: g2Total,
+    gene2Pct: pct(g2Total),
+    gene2Only: g2Total - coexp,
+    gene2OnlyPct: pct(g2Total - coexp),
     coexpressing: coexp,
-    coexpressPct: ((coexp / points.length) * 100).toFixed(1),
+    coexpressPct: pct(coexp),
   };
 
   // Sizing: fill container (no fixed size)
@@ -1477,6 +1498,10 @@ async function updateVisualization() {
   font-size: 28px;
   font-weight: 700;
   color: var(--pdw-text);
+}
+.stat-sub {
+  font-size: 14px;
+  color: var(--pdw-text-muted);
 }
 
 .chart-container {
