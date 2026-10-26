@@ -630,7 +630,7 @@ function drawViolinPlot(data) {
         textEl
           .attr("transform", "rotate(-45)")
           .style("text-anchor", "end")
-          .style("font-size", "16px")
+          .style("font-size", "14px")
           .style("fill", "var(--pdw-primary)")
           .style("cursor", "pointer");
       }
@@ -639,21 +639,21 @@ function drawViolinPlot(data) {
     xAxisGroup.selectAll("text")
       .attr("transform", "rotate(-45)")
       .style("text-anchor", "end")
-      .style("font-size", "16px");
+      .style("font-size", "14px");
   }
 
   // Y axis
   g.append("g")
     .call(d3.axisLeft(yScale))
     .selectAll("text")
-    .style("font-size", "16px");
+    .style("font-size", "14px");
 
   // X axis label
   g.append("text")
     .attr("x", innerWidth / 2)
     .attr("y", innerHeight + margin.bottom - 10)
     .attr("text-anchor", "middle")
-    .style("font-size", "17px")
+    .style("font-size", "16px")
     .style("font-weight", "600")
     .text(selectedMetadataColumn.value);
 
@@ -665,7 +665,7 @@ function drawViolinPlot(data) {
     .attr("x", -innerHeight / 2)
     .attr("y", -margin.left + 22)
     .attr("text-anchor", "middle")
-    .style("font-size", "17px")
+    .style("font-size", "16px")
     .style("font-weight", "600")
     .text(yLabel);
 
@@ -686,7 +686,7 @@ function plottedValues(values) {
 
 // "% expressing" above each group, so hiding zeros doesn't hide how many there were
 function drawExpressingLabel(g, xCenter, bandWidth, values) {
-  if (bandWidth < 40 || values.length === 0) return;
+  if (bandWidth < 34 || values.length === 0) return;
   const expressing = values.filter((v) => v > 0).length;
   const pct = Math.round((expressing / values.length) * 100);
 
@@ -694,7 +694,7 @@ function drawExpressingLabel(g, xCenter, bandWidth, values) {
     .attr("x", xCenter)
     .attr("y", -8)
     .attr("text-anchor", "middle")
-    .style("font-size", "16px")
+    .style("font-size", "14px")
     .style("fill", "#4b5563")
     .text(`${pct}%`)
     .append("title")
@@ -843,14 +843,14 @@ function updateDataPoints() {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--pdw-text-muted);
   flex: 1;
 }
 
 .gene-expression-label {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--pdw-text);
 }
@@ -859,7 +859,7 @@ function updateDataPoints() {
   padding: 10px 14px;
   border: 2px solid var(--pdw-border);
   border-radius: 2px;
-  font-size: 16px;
+  font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
   cursor: pointer;
@@ -887,7 +887,7 @@ function updateDataPoints() {
   padding: 10px 14px;
   border: 2px solid var(--pdw-border);
   border-radius: 2px;
-  font-size: 16px;
+  font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
   transition: all 0.2s;
@@ -896,7 +896,7 @@ function updateDataPoints() {
 }
 
 .gene-input::placeholder {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .gene-input:hover {
@@ -920,7 +920,7 @@ function updateDataPoints() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--pdw-text-muted);
   cursor: pointer;
@@ -950,7 +950,7 @@ function updateDataPoints() {
   position: absolute;
   top: 8px;
   left: 12px;
-  font-size: 16px;
+  font-size: 14px;
   color: #4b5563;
   z-index: 1;
 }

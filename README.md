@@ -384,6 +384,7 @@ give them their own look. Colors resolve in two levels (plus a fallback):
    | `--precision-border` | Borders |
    | `--precision-surface`, `--precision-surface-muted` | Panel and hover backgrounds |
    | `--precision-radius` | Button and toggle corner radius |
+| `--precision-line-height` | Line height for all widget text (default `1.3`, set on the widget so a host's taller prose line height doesn't space out labels) |
 
 3. **Fallback.** With neither set, Precision uses its own defaults (primary `#667eea`).
 

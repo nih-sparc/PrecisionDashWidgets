@@ -436,7 +436,7 @@ function draw() {
         .ticks(Math.max(2, Math.floor((width - MARGIN.left) / 130)))
         .tickFormat((d) => `${(d / 1e6).toFixed(decimals)} Mb`)
     )
-    .call((axis) => axis.selectAll("text").attr("font-size", 16));
+    .call((axis) => axis.selectAll("text").attr("font-size", 14));
 
   // Linked peak bands sit behind everything else
   const visibleLinks = showLinks
@@ -558,7 +558,7 @@ function drawGeneModel(svg, lanes, x, clampX, v) {
         .attr("x", labelX)
         .attr("y", mid - 9)
         .attr("text-anchor", labelX === MARGIN.left + 2 ? "start" : "end")
-        .attr("font-size", 16)
+        .attr("font-size", 14)
         .attr("font-weight", isTarget ? 700 : 400)
         .attr("fill", isTarget ? accentColor : "#475569")
         .text(gene.name);
@@ -570,7 +570,7 @@ function drawGeneModel(svg, lanes, x, clampX, v) {
     .attr("x", MARGIN.left - 10)
     .attr("y", MARGIN.top + GENE_LANE_HEIGHT / 2 + 6)
     .attr("text-anchor", "end")
-    .attr("font-size", 16)
+    .attr("font-size", 14)
     .attr("font-weight", 600)
     .attr("fill", "#1a202c")
     .text("Genes");
@@ -613,7 +613,7 @@ function drawTracks(svg, x, top, width, v) {
       .attr("x", MARGIN.left - 10)
       .attr("y", trackTop + TRACK_HEIGHT / 2 + 6)
       .attr("text-anchor", "end")
-      .attr("font-size", 16)
+      .attr("font-size", 14)
       .attr("fill", "#1a202c")
       .text(truncate(group, 18))
       .append("title")
@@ -642,7 +642,7 @@ function drawTracks(svg, x, top, width, v) {
     .attr("x", width - MARGIN.right)
     .attr("y", top - 3)
     .attr("text-anchor", "end")
-    .attr("font-size", 16)
+    .attr("font-size", 14)
     .attr("fill", "#64748b")
     .text(`Scale: 0–${formatSignal(yMax)} ${unit} (same for all tracks)`);
 }
@@ -658,7 +658,7 @@ function drawLinkArcs(svg, x, clampX, top, width, v, links) {
     .attr("x", MARGIN.left - 10)
     .attr("y", baseline - 8)
     .attr("text-anchor", "end")
-    .attr("font-size", 16)
+    .attr("font-size", 14)
     .attr("font-weight", 600)
     .attr("fill", "#1a202c")
     .text("Links");
@@ -755,14 +755,14 @@ function formatSignal(value) {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--pdw-text-muted);
   white-space: nowrap;
 }
 
 .gene-expression-label {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--pdw-text);
 }
@@ -771,7 +771,7 @@ function formatSignal(value) {
   padding: 4px 8px;
   border: 1px solid #cbd5e1;
   border-radius: 2px;
-  font-size: 16px;
+  font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
   cursor: pointer;
@@ -797,7 +797,7 @@ function formatSignal(value) {
   padding: 4px 8px;
   border: 1px solid #cbd5e1;
   border-radius: 2px;
-  font-size: 16px;
+  font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
   min-width: 0;
@@ -805,7 +805,7 @@ function formatSignal(value) {
 }
 
 .gene-input::placeholder {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .gene-input:hover {
@@ -830,7 +830,7 @@ function formatSignal(value) {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--pdw-text);
   cursor: pointer;
@@ -851,9 +851,9 @@ function formatSignal(value) {
 
 .hint {
   margin: -12px 0 0;
-  font-size: 16px;
+  font-size: 14px;
   color: var(--pdw-text-muted);
-  line-height: 1.4;
+  line-height: var(--pdw-line-height);
 }
 
 .plot-container {
@@ -870,7 +870,7 @@ function formatSignal(value) {
 
 .region-label {
   padding: 6px 10px 0;
-  font-size: 16px;
+  font-size: 14px;
   color: #475569;
   flex-shrink: 0;
 }
@@ -886,7 +886,7 @@ function formatSignal(value) {
 
 .plot-message {
   padding: 12px;
-  font-size: 16px;
+  font-size: 14px;
   color: #4b5563;
   flex-shrink: 0;
 }
@@ -930,8 +930,8 @@ function formatSignal(value) {
 
 .empty-text {
   margin: 0;
-  font-size: 16px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: var(--pdw-line-height);
   color: var(--pdw-text-muted);
 }
 
