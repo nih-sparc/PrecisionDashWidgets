@@ -831,6 +831,7 @@ function updateDataPoints() {
   min-width: 250px;
   display: flex;
   flex-direction: column;
+  gap: 12px;
   padding: 16px;
   background: var(--pdw-surface-muted);
   border: 1px solid var(--pdw-border);
@@ -846,7 +847,6 @@ function updateDataPoints() {
   font-size: 14px;
   font-weight: 500;
   color: var(--pdw-text-muted);
-  flex: 1;
 }
 
 .gene-expression-label {
