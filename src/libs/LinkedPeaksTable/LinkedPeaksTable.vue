@@ -508,7 +508,7 @@ function corrWidth(r) {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--pdw-text-muted);
   white-space: nowrap;
@@ -519,7 +519,7 @@ function corrWidth(r) {
 }
 
 .gene-expression-label {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--pdw-text);
 }
@@ -528,7 +528,7 @@ function corrWidth(r) {
   padding: 4px 8px;
   border: 1px solid #cbd5e1;
   border-radius: 2px;
-  font-size: 16px;
+  font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
   cursor: pointer;
@@ -551,7 +551,7 @@ function corrWidth(r) {
   padding: 4px 8px;
   border: 1px solid #cbd5e1;
   border-radius: 2px;
-  font-size: 16px;
+  font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
   min-width: 0;
@@ -559,7 +559,7 @@ function corrWidth(r) {
 }
 
 .gene-input::placeholder {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 
@@ -576,7 +576,7 @@ function corrWidth(r) {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--pdw-text);
   cursor: pointer;
@@ -596,9 +596,9 @@ function corrWidth(r) {
 
 .hint {
   margin: 0;
-  font-size: 16px;
+  font-size: 14px;
   color: var(--pdw-text-muted);
-  line-height: 1.4;
+  line-height: var(--pdw-line-height);
 }
 
 .main-panel {
@@ -632,7 +632,7 @@ function corrWidth(r) {
 }
 
 .summary-label {
-  font-size: 16px;
+  font-size: 14px;
   color: var(--pdw-text-muted);
 }
 
@@ -654,7 +654,7 @@ function corrWidth(r) {
 .links-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 16px;
+  font-size: 14px;
   color: var(--pdw-text);
 }
 
@@ -664,7 +664,7 @@ function corrWidth(r) {
   background: #f1f5f9;
   text-align: left;
   font-weight: 600;
-  font-size: 16px;
+  font-size: 14px;
   color: #475569;
   padding: 6px 8px;
   border-bottom: 1px solid var(--pdw-border);
@@ -698,7 +698,7 @@ function corrWidth(r) {
 
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .muted {
@@ -713,7 +713,7 @@ function corrWidth(r) {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 999px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   background: #e2e8f0;
   color: #475569;
@@ -768,7 +768,7 @@ function corrWidth(r) {
   border-radius: 3px;
   background: #f5f3ff;
   color: #6d28d9;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 15px;
   vertical-align: middle;
@@ -776,7 +776,7 @@ function corrWidth(r) {
 }
 
 .header-badge {
-  font-size: 16px;
+  font-size: 14px;
   padding: 1px 7px;
   margin-left: 0;
 }
@@ -790,7 +790,7 @@ function corrWidth(r) {
   padding: 0;
   border: none;
   background: none;
-  font-size: 16px;
+  font-size: 14px;
   color: var(--pdw-text-muted);
   cursor: pointer;
   flex-shrink: 0;
@@ -801,20 +801,20 @@ function corrWidth(r) {
 }
 
 .chevron {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .footnote {
   margin: 0;
-  font-size: 16px;
+  font-size: 14px;
   color: var(--pdw-text-muted);
-  line-height: 1.5;
+  line-height: var(--pdw-line-height);
   flex-shrink: 0;
 }
 
 .plot-message {
   padding: 4px 2px;
-  font-size: 16px;
+  font-size: 14px;
   color: #4b5563;
 }
 
@@ -846,8 +846,8 @@ function corrWidth(r) {
 
 .empty-text {
   margin: 0;
-  font-size: 16px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: var(--pdw-line-height);
   color: var(--pdw-text-muted);
 }
 

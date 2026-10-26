@@ -807,9 +807,9 @@ function drawLeftLabels(canvas, transform) {
     }
 
     // Calculate font size based on zoom, with limits
-    const baseFontSize = 16;
-    const minFontSize = 16;
-    const maxFontSize = 22;
+    const baseFontSize = 14;
+    const minFontSize = 14;
+    const maxFontSize = 20;
     // Direct scaling with zoom (no sqrt dampening)
     const fontSize = Math.round(
       Math.max(minFontSize, Math.min(maxFontSize, baseFontSize * tr.k))
@@ -1864,7 +1864,7 @@ function formatValue(key, value) {
   align-items: center;
   justify-content: center;
   color: #94a3b8;
-  font-size: 16px;
+  font-size: 14px;
   font-style: italic;
   width: 100%;
 }
@@ -1880,7 +1880,7 @@ function formatValue(key, value) {
   gap: 10px;
   flex: 1;
   min-width: 0;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--pdw-text);
   white-space: nowrap;
@@ -1892,7 +1892,7 @@ function formatValue(key, value) {
   padding: 10px 14px;
   border: 2px solid var(--pdw-border);
   border-radius: 2px;
-  font-size: 16px;
+  font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
   cursor: pointer;
@@ -1921,7 +1921,7 @@ function formatValue(key, value) {
   padding: 10px 14px;
   border: 2px solid var(--pdw-border);
   border-radius: 2px;
-  font-size: 16px;
+  font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
   transition: all 0.2s;
@@ -1930,7 +1930,7 @@ function formatValue(key, value) {
 }
 
 .gene-input::placeholder {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .gene-input:hover {
@@ -1949,7 +1949,7 @@ function formatValue(key, value) {
 }
 .cell-map-toggle :deep(button) {
   padding: 0 14px;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 
@@ -2014,7 +2014,7 @@ function formatValue(key, value) {
 }
 
 .legend-title {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--pdw-text);
   text-transform: uppercase;
@@ -2029,7 +2029,7 @@ function formatValue(key, value) {
   padding: 4px 8px;
   cursor: pointer;
   color: var(--pdw-text-muted);
-  font-size: 16px;
+  font-size: 14px;
   transition: all 0.2s;
   display: flex;
   align-items: center;
@@ -2048,7 +2048,7 @@ function formatValue(key, value) {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 16px;
+  font-size: 14px;
   color: var(--pdw-text-muted);
   cursor: pointer;
   padding: 4px;
@@ -2084,7 +2084,7 @@ function formatValue(key, value) {
 
 .legend-x {
   color: var(--pdw-text-muted);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: bold;
   line-height: 1;
 }
@@ -2114,7 +2114,7 @@ function formatValue(key, value) {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   min-width: 200px;
   max-width: 300px;
-  font-size: 16px;
+  font-size: 14px;
   backdrop-filter: blur(8px);
   background: rgba(255, 255, 255, 0.98);
   line-height: 1.2;
@@ -2122,7 +2122,7 @@ function formatValue(key, value) {
 
 .tooltip-header {
   font-weight: 700;
-  font-size: 16px;
+  font-size: 14px;
   color: var(--pdw-text);
   margin-bottom: 6px;
   padding-bottom: 6px;
@@ -2168,7 +2168,7 @@ function formatValue(key, value) {
 .gradient-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 16px;
+  font-size: 14px;
   color: var(--pdw-text-muted);
   font-weight: 500;
 }

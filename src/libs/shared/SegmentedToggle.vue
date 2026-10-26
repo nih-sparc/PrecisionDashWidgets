@@ -48,7 +48,7 @@ defineEmits(["update:modelValue"]);
 
 .segmented-toggle button {
   padding: 4px 12px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--pdw-text-muted);
   background: var(--pdw-surface);

@@ -436,7 +436,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
         textEl
           .attr("transform", "rotate(-45)")
           .style("text-anchor", "end")
-          .style("font-size", "16px")
+          .style("font-size", "14px")
           .style("fill", "var(--pdw-primary)")
           .style("cursor", "pointer");
       }
@@ -446,14 +446,14 @@ function drawPlot({ rows, xLevels, yLevels }) {
       .selectAll("text")
       .attr("transform", "rotate(-45)")
       .style("text-anchor", "end")
-      .style("font-size", "16px");
+      .style("font-size", "14px");
   }
 
   // Y axis
   g.append("g")
     .call(d3.axisLeft(yScale).tickFormat(d3.format(".0%")))
     .selectAll("text")
-    .style("font-size", "16px");
+    .style("font-size", "14px");
 
   // Y axis label
   g.append("text")
@@ -461,7 +461,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
     .attr("x", -innerHeight / 2)
     .attr("y", -margin.left + 20)
     .attr("text-anchor", "middle")
-    .style("font-size", "17px")
+    .style("font-size", "16px")
     .style("font-weight", "600")
     .text("Proportion");
 
@@ -470,7 +470,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
     .attr("x", innerWidth / 2)
     .attr("y", innerHeight + margin.bottom - 10)
     .attr("text-anchor", "middle")
-    .style("font-size", "17px")
+    .style("font-size", "16px")
     .style("font-weight", "600")
     .text(xCol.value);
 
@@ -537,7 +537,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--pdw-text-muted);
 }
@@ -546,7 +546,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
   padding: 10px 14px;
   border: 2px solid var(--pdw-border);
   border-radius: 2px;
-  font-size: 16px;
+  font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
   cursor: pointer;
@@ -567,7 +567,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
 
 
 .pp-message {
-  font-size: 16px;
+  font-size: 14px;
   color: #4b5563;
 }
 
@@ -580,13 +580,13 @@ function drawPlot({ rows, xLevels, yLevels }) {
   pointer-events: none;
   z-index: 20;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  font-size: 16px;
+  font-size: 14px;
   max-width: 260px;
 }
 
 .pp-tooltip-header {
   font-weight: 700;
-  font-size: 16px;
+  font-size: 14px;
   color: var(--pdw-text);
   margin-bottom: 6px;
   padding-bottom: 4px;
@@ -644,7 +644,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 16px;
+  font-size: 14px;
   color: #374151;
 }
 

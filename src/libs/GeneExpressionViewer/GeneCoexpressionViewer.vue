@@ -1335,7 +1335,7 @@ async function updateVisualization() {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--pdw-text-muted);
   min-height: 20px;
@@ -1346,13 +1346,13 @@ async function updateVisualization() {
 }
 .selected-gene {
   font-weight: 600;
-  font-size: 16px;
+  font-size: 14px;
 }
 .gene-input {
   padding: 10px 14px;
   border: 2px solid var(--pdw-border);
   border-radius: 2px;
-  font-size: 16px;
+  font-size: 14px;
   transition: all 0.2s;
   background: var(--pdw-surface);
   color: var(--pdw-text);
@@ -1374,7 +1374,7 @@ async function updateVisualization() {
 }
 .gene-input::placeholder {
   color: #94a3b8;
-  font-size: 16px;
+  font-size: 14px;
 }
 .vs-separator {
   display: flex;
@@ -1383,7 +1383,7 @@ async function updateVisualization() {
   padding: 0 8px;
   flex-shrink: 0;
   color: #cbd5e1;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -1402,7 +1402,7 @@ async function updateVisualization() {
 }
 .cell-map-toggle :deep(button) {
   padding: 0 14px;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .loading-overlay {
@@ -1451,7 +1451,7 @@ async function updateVisualization() {
   border-radius: 2px;
   color: #856404;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 14px;
   transition: all 0.2s;
 }
 .dismiss-btn:hover {
@@ -1467,7 +1467,7 @@ async function updateVisualization() {
   border-radius: 2px;
 }
 .stat-label {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1510,7 +1510,7 @@ async function updateVisualization() {
   border: 1px solid var(--pdw-border);
   border-radius: 999px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  font-size: 16px;
+  font-size: 14px;
   color: var(--pdw-text-muted);
 }
 .chart-loading p {
@@ -1542,14 +1542,14 @@ async function updateVisualization() {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   min-width: 200px;
   max-width: 300px;
-  font-size: 16px;
+  font-size: 14px;
   backdrop-filter: blur(8px);
   background: rgba(255, 255, 255, 0.98);
   line-height: 1.2;
 }
 .tooltip-header {
   font-weight: 700;
-  font-size: 16px;
+  font-size: 14px;
   color: var(--pdw-text);
   margin-bottom: 6px;
   padding-bottom: 6px;
@@ -1592,7 +1592,7 @@ async function updateVisualization() {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   flex-shrink: 0;
   min-width: 0;
@@ -1661,7 +1661,7 @@ async function updateVisualization() {
   padding: 4px;
   background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
   border-bottom: 1px solid var(--pdw-border);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--pdw-text);
 }
@@ -1700,7 +1700,7 @@ async function updateVisualization() {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--pdw-text-muted);
 }
@@ -1715,7 +1715,7 @@ async function updateVisualization() {
   background: var(--pdw-surface);
   padding: 2px 4px;
   border-radius: 2px;
-  font-size: 16px;
+  font-size: 14px;
 }
 .x-axis-label {
   position: absolute;
@@ -1727,11 +1727,11 @@ async function updateVisualization() {
   background: var(--pdw-surface);
   padding: 2px 4px;
   border-radius: 2px;
-  font-size: 16px;
+  font-size: 14px;
 }
 .axis-arrow {
   position: absolute;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: bold;
   color: #94a3b8;
   z-index: 5;
