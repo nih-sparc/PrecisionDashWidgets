@@ -25,112 +25,94 @@
     <!-- Main Dashboard -->
     <div v-else class="dashboard">
       <div class="content-layout">
-        <!-- Controls -->
+        <!-- Controls: what to look at, then which links to show -->
         <div class="controls">
-          <label class="label gene-expression-label">
-            Gene
-            <div class="gene-input-wrapper">
-              <input
-                v-model="geneSearch"
-                type="text"
-                placeholder="Gene name (e.g., SCN9A)"
-                class="gene-input"
-                list="linked-peaks-gene-suggestions"
-                @input="debouncedSearchGenes"
-                @keydown.enter="handleGeneSelect"
-              />
-              <datalist id="linked-peaks-gene-suggestions">
-                <option v-for="g in geneSuggestions" :key="g" :value="g" />
-              </datalist>
-              <button
-                @click="handleGeneSelect"
-                :disabled="!geneSearch.trim() || dataLoading"
-                class="visualize-btn pdw-btn pdw-btn--primary"
-              >
-                {{ dataLoading ? "Loading..." : "Show links" }}
-              </button>
-            </div>
-          </label>
-
-          <label class="label">
-            |r| ≥ <strong class="value">{{ minAbsCorrelation.toFixed(2) }}</strong>
-            <input
-              v-model.number="minAbsCorrelation"
-              type="range"
-              min="0"
-              :max="correlationMax"
-              step="0.01"
-              class="slider"
-            />
-          </label>
-
-          <label class="label">
-            <SegmentedToggle v-model="direction" aria-label="Link direction" :options="DIRECTIONS" />
-          </label>
-
-          <div
-            class="label"
-            :title="links.length && !typesAvailable ? 'Link types aren\'t available for this dataset. Reprocess it to add them.' : ''"
-          >
-            <span>
-              Type:
-              <span
-                v-if="columnInfo('link_type').computed"
-                class="calc-badge"
-                :title="columnInfo('link_type').rule"
-              >Calculated</span>
-            </span>
-            <label
-              v-for="t in LINK_TYPES"
-              :key="t.value"
-              class="checkbox-label"
-              :class="{ disabled: !typesAvailable }"
-            >
-              <input
-                type="checkbox"
-                class="checkbox"
-                :value="t.value"
-                v-model="selectedTypes"
-                :disabled="!typesAvailable"
-              />
-              {{ t.label }}
+          <div class="control-row">
+            <label class="label gene-expression-label">
+              Gene
+              <div class="gene-input-wrapper">
+                <input
+                  v-model="geneSearch"
+                  type="text"
+                  placeholder="e.g. SCN10A"
+                  class="gene-input"
+                  list="linked-peaks-gene-suggestions"
+                  @input="debouncedSearchGenes"
+                  @keydown.enter="handleGeneSelect"
+                />
+                <datalist id="linked-peaks-gene-suggestions">
+                  <option v-for="g in geneSuggestions" :key="g" :value="g" />
+                </datalist>
+                <button
+                  @click="handleGeneSelect"
+                  :disabled="!geneSearch.trim() || dataLoading"
+                  class="visualize-btn pdw-btn pdw-btn--primary"
+                >
+                  {{ dataLoading ? "Loading..." : "Show links" }}
+                </button>
+              </div>
             </label>
+
+            <form
+              class="label"
+              title="Find linked peaks containing a genomic position (hg38), for any gene"
+              @submit.prevent="lookUpPosition"
+            >
+              Find position:
+              <input
+                v-model="positionQuery"
+                type="text"
+                class="gene-input position-input"
+                placeholder="chr3:38,816,400"
+                aria-label="Genomic position (hg38)"
+              />
+              <button type="submit" class="pdw-btn small-btn" :disabled="!positionQuery.trim()">
+                Find
+              </button>
+            </form>
           </div>
 
-          <label class="label">
-            Sort:
-            <select v-model="sortBy" class="select">
-              <option v-for="opt in SORT_OPTIONS" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </option>
-            </select>
-          </label>
+          <div class="control-row">
+            <label class="label" title="Hide links weaker than this">
+              |r| ≥ <strong class="value">{{ minAbsCorrelation.toFixed(2) }}</strong>
+              <input
+                v-model.number="minAbsCorrelation"
+                type="range"
+                min="0"
+                :max="correlationMax"
+                step="0.01"
+                class="slider"
+              />
+            </label>
 
-          <form class="label" @submit.prevent="lookUpPosition">
-            <span title="Find linked peaks containing a genomic position (hg38), for any gene">
-              Position (hg38):
-            </span>
-            <input
-              v-model="positionQuery"
-              type="text"
-              class="gene-input position-input"
-              placeholder="chr3:38,816,400"
-              aria-label="Genomic position (hg38)"
-            />
-            <button type="submit" class="pdw-btn small-btn" :disabled="!positionQuery.trim()">
-              Find
-            </button>
-          </form>
+            <SegmentedToggle v-model="direction" aria-label="Link direction" :options="DIRECTIONS" />
 
-          <button
-            type="button"
-            class="pdw-btn small-btn"
-            :disabled="!filteredLinks.length"
-            title="The links shown in the table (after filters), with every column"
-            @click="downloadCsv"
-          >
-            Download CSV
-          </button>
+            <div
+              class="label"
+              :title="
+                links.length && !typesAvailable
+                  ? 'Link types aren\'t available for this dataset. Reprocess it to add them.'
+                  : columnInfo('link_type').rule || ''
+              "
+            >
+              <span :class="{ calc: columnInfo('link_type').computed }">Type:</span>
+              <label
+                v-for="t in LINK_TYPES"
+                :key="t.value"
+                class="checkbox-label"
+                :class="{ disabled: !typesAvailable }"
+              >
+                <input
+                  type="checkbox"
+                  class="checkbox"
+                  :value="t.value"
+                  v-model="selectedTypes"
+                  :disabled="!typesAvailable"
+                />
+                {{ t.label }}
+              </label>
+            </div>
+          </div>
         </div>
 
         <!-- Summary + table -->
@@ -169,29 +151,27 @@
           <div v-if="message" class="plot-message">{{ message }}</div>
 
           <template v-if="links.length">
-            <div class="summary">
-              <div class="summary-item">
-                <div class="summary-value">{{ summary.total }}</div>
-                <div class="summary-label">
-                  links shown<span v-if="summary.total !== links.length"> (of {{ links.length }})</span>
-                </div>
-              </div>
-              <div class="summary-item">
-                <div class="summary-value">
-                  <span class="pos">{{ summary.positive }}</span> /
-                  <span class="neg">{{ summary.negative }}</span>
-                </div>
-                <div class="summary-label">positive / negative</div>
-              </div>
-              <div class="summary-item">
-                <div class="summary-value">
-                  {{ summary.farthest ? formatDistance(summary.farthest.distance) : "—" }}
-                </div>
-                <div class="summary-label">
-                  farthest link<span v-if="summary.farthest?.linkType && typesAvailable">
+            <div class="summary-line">
+              <span>
+                <strong>{{ summary.total }}</strong>
+                link{{ summary.total === 1 ? "" : "s" }}<span v-if="summary.total !== links.length">
+                  (of {{ links.length }})</span>
+              </span>
+              <span class="sep">·</span>
+              <span>
+                <strong class="pos">{{ summary.positive }}</strong> positive /
+                <strong class="neg">{{ summary.negative }}</strong> negative
+              </span>
+              <template v-if="summary.farthest">
+                <span class="sep">·</span>
+                <span>
+                  farthest {{ formatDistance(summary.farthest.distance)
+                  }}<span v-if="summary.farthest.linkType && typesAvailable">
                     ({{ typeLabel(summary.farthest.linkType) }})</span>
-                </div>
-              </div>
+                </span>
+              </template>
+              <span class="sep">·</span>
+              <span title="Click a column heading to sort by it">sorted by {{ sortLabel }}</span>
             </div>
 
             <p v-if="selectedHidden" class="plot-message">
@@ -202,55 +182,42 @@
               <table class="links-table">
                 <thead>
                   <tr>
-                    <th @click="sortBy = 'position'" :class="{ sorted: sortBy === 'position' }">
-                      Location
+                    <th
+                      @click="sortBy = 'position'"
+                      :class="{ sorted: sortBy === 'position' }"
+                      title="Peak location (hg38). Click a row to select the peak; the magnifier zooms the chromatin view to it."
+                    >
+                      Location<span v-if="links[0]" class="muted"> ({{ links[0].chrom }})</span>{{ sortMark("position") }}
                     </th>
-                    <th>
+                    <th :class="{ calc: columnInfo('link_type').computed }" :title="columnInfo('link_type').rule">
                       Type
-                      <span
-                        v-if="columnInfo('link_type').computed"
-                        class="calc-badge"
-                        :title="columnInfo('link_type').rule"
-                      >Calc</span>
                     </th>
                     <th
                       @click="sortBy = 'distance'"
-                      :class="{ sorted: sortBy === 'distance' }"
-                      title="Distance from the gene start, in the gene's direction"
+                      :class="{ sorted: sortBy === 'distance', calc: columnInfo('distance_to_tss').computed }"
+                      :title="columnInfo('distance_to_tss').rule || 'Distance from the gene start, in the gene\'s direction'"
                     >
-                      Distance
-                      <span
-                        v-if="columnInfo('distance_to_tss').computed"
-                        class="calc-badge"
-                        :title="columnInfo('distance_to_tss').rule"
-                      >Calc</span>
+                      Distance{{ sortMark("distance") }}
                     </th>
                     <th
                       @click="sortBy = sortBy === 'strength' ? 'correlation' : 'strength'"
-                      :class="{ sorted: sortBy === 'strength' || sortBy === 'correlation' }"
+                      :class="{
+                        sorted: sortBy === 'strength' || sortBy === 'correlation',
+                        calc: columnInfo('correlation').computed,
+                      }"
+                      :title="methodNote"
                     >
-                      Correlation (r)
-                      <span
-                        v-if="columnInfo('correlation').computed"
-                        class="calc-badge"
-                        :title="methodNote"
-                      >Calc</span>
+                      r{{ sortMark("strength", "correlation") }}
                     </th>
-                    <th @click="sortBy = 'pValue'" :class="{ sorted: sortBy === 'pValue' }">
-                      p-value
-                      <span
-                        v-if="columnInfo('p_value').computed"
-                        class="calc-badge"
-                        :title="methodNote"
-                      >Calc</span>
+                    <th
+                      @click="sortBy = 'pValue'"
+                      :class="{ sorted: sortBy === 'pValue', calc: columnInfo('p_value').computed }"
+                      :title="methodNote"
+                    >
+                      p-value{{ sortMark("pValue") }}
                     </th>
-                    <th :title="mostOpenHeaderTitle">
+                    <th :class="{ calc: columnInfo('top_cell_type').computed }" :title="mostOpenHeaderTitle">
                       Most open in
-                      <span
-                        v-if="columnInfo('top_cell_type').computed"
-                        class="calc-badge"
-                        :title="columnInfo('top_cell_type').rule"
-                      >Calc</span>
                     </th>
                   </tr>
                 </thead>
@@ -262,15 +229,19 @@
                     @click="selectLink(link)"
                     title="Select this peak (its arc is highlighted in the chromatin view)"
                   >
-                    <td class="mono">
-                      {{ link.chrom }}:{{ link.start.toLocaleString() }}–{{ link.end.toLocaleString() }}
+                    <td class="mono location-cell">
+                      {{ link.start.toLocaleString() }}–{{ link.end.toLocaleString() }}
                       <button
                         type="button"
-                        class="pdw-btn row-zoom"
+                        class="row-zoom"
                         title="Zoom the chromatin view to ±5 kb around this peak"
+                        aria-label="Zoom to this peak"
                         @click.stop="zoomTo(link)"
                       >
-                        Zoom
+                        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                          <circle cx="6.5" cy="6.5" r="4.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+                          <path d="M10 10l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                        </svg>
                       </button>
                     </td>
                     <td>
@@ -306,14 +277,37 @@
             </div>
           </template>
 
-          <button
-            class="about-toggle"
-            :aria-expanded="showExplainer"
-            @click="showExplainer = !showExplainer"
-          >
-            What is a linked peak?
-            <span class="chevron">{{ showExplainer ? "▾" : "▸" }}</span>
-          </button>
+          <div class="footer-row">
+            <button
+              class="about-toggle"
+              :aria-expanded="showExplainer"
+              @click="showExplainer = !showExplainer; showAbout = false"
+            >
+              What is a linked peak?
+              <span class="chevron">{{ showExplainer ? "▾" : "▸" }}</span>
+            </button>
+            <button
+              class="about-toggle"
+              :aria-expanded="showAbout"
+              :title="prov.known ? methodNote : ''"
+              @click="showAbout = !showAbout; showExplainer = false"
+            >
+              How these links were calculated
+              <span class="chevron">{{ showAbout ? "▾" : "▸" }}</span>
+            </button>
+            <span v-if="anyComputed" class="calc-key" :title="methodNote">
+              <span class="calc">Purple</span> = calculated by the data processor
+            </span>
+            <button
+              type="button"
+              class="pdw-btn small-btn csv-btn"
+              :disabled="!filteredLinks.length"
+              title="The links shown in the table (after filters), with every column"
+              @click="downloadCsv"
+            >
+              Download CSV
+            </button>
+          </div>
           <div v-if="showExplainer" class="footnote explainer">
             <p>
               A linked peak is a region of open DNA whose accessibility rises and falls with this
@@ -334,22 +328,11 @@
             <p>{{ MISSING_LINK_NOTE }}</p>
           </div>
 
-          <button
-            class="about-toggle"
-            :aria-expanded="showAbout"
-            :title="prov.known ? methodNote : ''"
-            @click="showAbout = !showAbout"
-          >
-            <span v-if="prov.linksComputed" class="calc-badge header-badge">Calculated</span>
-            How these links were calculated
-            <span class="chevron">{{ showAbout ? "▾" : "▸" }}</span>
-          </button>
           <p v-if="showAbout" class="footnote">
             <template v-if="prov.known">
-              <span v-if="anyComputed" class="calc-badge">Calc</span>
               {{ methodNote }}
               <span v-if="anyComputed">
-                Hover a <span class="calc-badge">Calc</span> label to see how that column was worked out.
+                Column names in <span class="calc">purple</span> were calculated; hover one to see how.
               </span>
             </template>
             <template v-else>
@@ -481,6 +464,14 @@ const filteredLinks = computed(() =>
   filterLinks(links.value, linkFilterOptions(filters.value, links.value))
 );
 const visibleLinks = computed(() => sortLinks(filteredLinks.value, sortBy.value));
+const sortLabel = computed(() =>
+  (SORT_OPTIONS.find((o) => o.value === sortBy.value)?.label ?? "").toLowerCase()
+);
+
+// Arrow after the heading the table is sorted by
+function sortMark(...keys) {
+  return keys.includes(sortBy.value) ? " ▾" : "";
+}
 const summary = computed(() => summarizeLinks(filteredLinks.value));
 
 watch(
@@ -791,14 +782,70 @@ function corrWidth(r) {
 
 .controls {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 16px;
+  flex-direction: column;
+  gap: 6px;
   padding: 6px 10px;
   background: var(--pdw-surface-muted);
   border: 1px solid var(--pdw-border);
   border-radius: 2px;
   flex-shrink: 0;
+}
+
+.control-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+
+/* Values the data processor calculated (not in the submitted data); hover for how */
+.calc {
+  color: #6d28d9;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.summary-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  font-size: 14px;
+  color: var(--pdw-text-muted);
+  flex-shrink: 0;
+}
+
+.summary-line strong {
+  color: var(--pdw-text);
+}
+
+.summary-line .sep,
+.legend-sep {
+  color: #cbd5e1;
+}
+
+.footer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  flex-shrink: 0;
+}
+
+.calc-key {
+  font-size: 14px;
+  color: var(--pdw-text-muted);
+}
+
+.csv-btn {
+  margin-left: auto;
+}
+
+.location-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .label {
@@ -908,31 +955,6 @@ function corrWidth(r) {
   min-height: 0;
 }
 
-.summary {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.summary-item {
-  flex: 1;
-  padding: 4px 10px;
-  background: var(--pdw-surface-muted);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
-}
-
-.summary-value {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--pdw-text);
-}
-
-.summary-label {
-  font-size: 14px;
-  color: var(--pdw-text-muted);
-}
-
 .pos {
   color: #d97706;
 }
@@ -955,6 +977,10 @@ function corrWidth(r) {
   color: var(--pdw-text);
 }
 
+.links-table th.calc {
+  color: #6d28d9;
+}
+
 .links-table th {
   position: sticky;
   top: 0;
@@ -975,7 +1001,7 @@ function corrWidth(r) {
 }
 
 .links-table td {
-  padding: 4px 8px;
+  padding: 4px 6px;
   border-bottom: 1px solid #f1f5f9;
   white-space: nowrap;
 }
@@ -1038,13 +1064,27 @@ function corrWidth(r) {
 }
 
 .row-zoom {
-  margin-left: 6px;
-  padding: 0 8px;
-  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--pdw-border);
+  border-radius: var(--pdw-radius);
+  background: var(--pdw-surface);
+  color: var(--pdw-text-muted);
+  cursor: pointer;
 }
 
+.row-zoom:hover {
+  color: var(--pdw-primary);
+  border-color: var(--pdw-primary);
+}
+
+/* Digits line up in columns without a (wider) monospace font */
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
   font-size: 14px;
 }
 
@@ -1088,7 +1128,7 @@ function corrWidth(r) {
 }
 
 .corr-bar-track {
-  width: 40px;
+  width: 30px;
   height: 6px;
   background: #f1f5f9;
   border-radius: 3px;
@@ -1105,27 +1145,6 @@ function corrWidth(r) {
 
 .corr-bar.neg {
   background: #3b82f6;
-}
-
-.calc-badge {
-  display: inline-block;
-  margin-left: 4px;
-  padding: 0 5px;
-  border: 1px solid #c4b5fd;
-  border-radius: 3px;
-  background: #f5f3ff;
-  color: #6d28d9;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 15px;
-  vertical-align: middle;
-  cursor: help;
-}
-
-.header-badge {
-  font-size: 14px;
-  padding: 1px 7px;
-  margin-left: 0;
 }
 
 

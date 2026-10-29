@@ -25,94 +25,101 @@
     <!-- Main Dashboard -->
     <div v-else class="dashboard">
       <div class="content-layout">
-        <!-- Controls -->
+        <!-- Controls: what to show (gene, region), then how to show it -->
         <div class="controls">
-          <label class="label gene-expression-label">
-            Gene
-            <div class="gene-input-wrapper">
-              <input
-                v-model="geneSearch"
-                type="text"
-                placeholder="Gene name (e.g., SCN10A)"
-                class="gene-input"
-                list="chromatin-gene-suggestions"
-                @input="debouncedSearchGenes"
-                @keydown.enter="handleGeneSelect"
-              />
-              <datalist id="chromatin-gene-suggestions">
-                <option v-for="gene in geneSuggestions" :key="gene" :value="gene" />
-              </datalist>
-              <button
-                @click="handleGeneSelect"
-                :disabled="!geneSearch.trim() || dataLoading || !available.geneCoords"
-                class="visualize-btn pdw-btn pdw-btn--primary"
-              >
-                {{ dataLoading ? "Loading..." : "Visualize" }}
-              </button>
-            </div>
-          </label>
+          <div class="control-row">
+            <label class="label gene-expression-label">
+              Gene
+              <div class="gene-input-wrapper">
+                <input
+                  v-model="geneSearch"
+                  type="text"
+                  placeholder="e.g. SCN10A"
+                  class="gene-input"
+                  list="chromatin-gene-suggestions"
+                  @input="debouncedSearchGenes"
+                  @keydown.enter="handleGeneSelect"
+                />
+                <datalist id="chromatin-gene-suggestions">
+                  <option v-for="gene in geneSuggestions" :key="gene" :value="gene" />
+                </datalist>
+                <button
+                  @click="handleGeneSelect"
+                  :disabled="!geneSearch.trim() || dataLoading || !available.geneCoords"
+                  class="visualize-btn pdw-btn pdw-btn--primary"
+                >
+                  {{ dataLoading ? "Loading..." : "Visualize" }}
+                </button>
+              </div>
+            </label>
 
-          <label class="label">
-            Region around gene:
-            <select v-model="flank" class="select">
-              <option
-                v-for="opt in FLANK_OPTIONS"
-                :key="opt.value"
-                :value="opt.value"
-                :disabled="opt.value === 'links' && !available.links"
-              >
-                {{ opt.label }}
-              </option>
-            </select>
-          </label>
+            <label class="label" title="How much of the genome around the gene to show">
+              Region:
+              <select v-model="flank" class="select">
+                <option
+                  v-for="opt in FLANK_OPTIONS"
+                  :key="opt.value"
+                  :value="opt.value"
+                  :disabled="opt.value === 'links' && !available.links"
+                >
+                  {{ opt.label }}
+                </option>
+              </select>
+            </label>
 
-          <label class="label">
-            Group by:
-            <select v-model="groupBy" class="select">
-              <option
-                v-for="opt in GROUP_OPTIONS"
-                :key="opt.value"
-                :value="opt.value"
-                :disabled="!opt.available"
-              >
-                {{ opt.available ? opt.label : `${opt.label} (not available)` }}
-              </option>
-            </select>
-          </label>
+            <!-- Only worth showing once the processor writes tracks for more than one grouping -->
+            <label v-if="groupChoices > 1" class="label">
+              Group by:
+              <select v-model="groupBy" class="select">
+                <option
+                  v-for="opt in GROUP_OPTIONS"
+                  :key="opt.value"
+                  :value="opt.value"
+                  :disabled="!opt.available"
+                >
+                  {{ opt.available ? opt.label : `${opt.label} (not available)` }}
+                </option>
+              </select>
+            </label>
+          </div>
 
-          <label class="label">
-            Signal:
-            <SegmentedToggle v-model="signalMode" aria-label="Signal" :options="signalOptions" />
-            <span
-              v-if="signalMode === 'rpm'"
-              class="calc-badge"
-              :title="`${SIGNAL_MODES[0].title} Reads in peaks per cell: ${depth?.readsColumn}.`"
-            >Calculated</span>
-          </label>
+          <div class="control-row">
+            <label class="label" :title="currentSignal.title">
+              Signal:
+              <select v-model="signalMode" class="select">
+                <option
+                  v-for="opt in signalOptions"
+                  :key="opt.key"
+                  :value="opt.key"
+                  :disabled="opt.disabled"
+                >
+                  {{ opt.label }}
+                </option>
+              </select>
+              <span
+                v-if="signalMode === 'rpm'"
+                class="calc-badge"
+                :title="`${SIGNAL_MODES[0].title} Reads in peaks per cell: ${depth?.readsColumn}.`"
+              >Calc</span>
+            </label>
 
-          <label class="label">
-            Scale:
             <SegmentedToggle v-model="trackScale" aria-label="Track scale" :options="SCALE_OPTIONS" />
-          </label>
-
-          <label class="label">
-            Tracks:
             <SegmentedToggle v-model="trackHeight" aria-label="Track height" :options="HEIGHT_OPTIONS" />
-          </label>
 
-          <label
-            class="checkbox-label"
-            :class="{ disabled: !available.links }"
-            :title="available.links ? '' : 'Linked peaks aren\'t available for this dataset'"
-          >
-            <input
-              v-model="highlightLinks"
-              type="checkbox"
-              class="checkbox"
-              :disabled="!available.links"
-            />
-            Show linked peaks
-          </label>
+            <label
+              class="checkbox-label"
+              :class="{ disabled: !available.links }"
+              :title="available.links ? 'Arcs from the gene\'s TSS to each linked peak' : 'Linked peaks aren\'t available for this dataset'"
+            >
+              <input
+                v-model="highlightLinks"
+                type="checkbox"
+                class="checkbox"
+                :disabled="!available.links"
+              />
+              Links
+            </label>
+          </div>
         </div>
 
         <!-- Tracks -->
@@ -133,6 +140,17 @@
               </button>
             </template>
             <span v-else-if="available.links && highlightLinks" class="link-summary">· {{ linkSummary }}</span>
+          </div>
+          <div v-if="view" class="legend">
+            <template v-if="available.links && highlightLinks">
+              <span class="legend-item"><span class="swatch" :style="{ background: POSITIVE_COLOR }"></span>r &gt; 0</span>
+              <span class="legend-item"><span class="swatch" :style="{ background: NEGATIVE_COLOR }"></span>r &lt; 0</span>
+              <span :title="`Arc width and opacity follow |r| on a fixed 0–${CORRELATION_SCALE_MAX} scale`">
+                thicker arc = larger |r|
+              </span>
+              <span class="legend-sep">·</span>
+            </template>
+            <span>{{ scaleNote }}</span>
           </div>
           <div class="svg-scroll">
             <svg ref="plotSvg" class="plot-svg"></svg>
@@ -231,26 +249,34 @@ const GROUP_OPTIONS = [
 ];
 
 const HEIGHT_OPTIONS = [
-  { key: 34, label: "Compact" },
+  { key: 34, label: "Compact", title: "Short tracks: see more cell types at once" },
   { key: 64, label: "Tall", title: "Taller tracks, for reading small peaks" },
 ];
 const SCALE_OPTIONS = [
-  { key: "shared", label: "Shared", title: "One scale for all tracks: best for comparing cell types" },
+  {
+    key: "shared",
+    label: "Shared scale",
+    title: "One scale for all tracks: best for comparing cell types",
+  },
   {
     key: "track",
     label: "Per track",
     title: "Each track scaled to its own maximum (shown at right): best for seeing the shape",
   },
 ];
+const groupChoices = GROUP_OPTIONS.filter((o) => o.available).length;
 // "Zoom to peak" shows this much on each side of the peak's center
 const ZOOM_FLANK = 5000;
 const TIP_WIDTH = 290;
 const TRACK_GAP = 4;
-const GENE_LANE_HEIGHT = 56;
-const LINK_ROW_HEIGHT = 70;
+// The target gene's lane has room for the TSS arrow; other genes' lanes are shorter
+const GENE_LANE_HEIGHT = 52;
+const OTHER_LANE_HEIGHT = 40;
+const LINK_ROW_HEIGHT = 64;
 const MIN_ARC_WIDTH = 8;
-// Top margin holds the upstream/downstream labels and the axis
-const MARGIN = { top: 54, right: 20, bottom: 12, left: 190 };
+// Top margin holds the upstream/downstream labels and the axis. The left margin holds the
+// row labels and is sized to them on each draw (fitLeftMargin).
+const MARGIN = { top: 50, right: 16, bottom: 12, left: 150 };
 // The target gene and focused peak use the theme's primary color (--pdw-primary), read
 // at draw time: SVG fill/stroke attributes can't reference CSS variables
 const DEFAULT_ACCENT = "#667eea";
@@ -288,6 +314,9 @@ const geneSuggestions = ref([]);
 const flank = ref(50000);
 const groupBy = ref("cell_type");
 const signalMode = ref("rpm");
+const currentSignal = computed(() => SIGNAL_MODES.find((m) => m.key === signalMode.value));
+// Track scale, shown in the legend line (set when the tracks are drawn)
+const scaleNote = ref("");
 const trackScale = ref("shared");
 const trackHeight = ref(HEIGHT_OPTIONS[0].key);
 // Mirrors the zoom prop, so zooming also works without the store
@@ -537,6 +566,7 @@ function draw() {
   }
 
   const width = Math.max(300, plotContainer.value?.clientWidth || 0) - 2;
+  fitLeftMargin(svgEl, width);
   const x = d3
     .scaleLinear()
     .domain([v.start, v.end])
@@ -544,11 +574,11 @@ function draw() {
   const clampX = (pos) => Math.max(MARGIN.left, Math.min(width - MARGIN.right, x(pos)));
 
   const lanes = assignLanes(v.genes, clampX, v.gene.name);
-  const geneRowHeight = Math.max(1, lanes.length) * GENE_LANE_HEIGHT;
+  const geneRowHeight = laneTop(Math.max(1, lanes.length)) - MARGIN.top;
   const showLinks = highlightLinks.value && available.value.links;
   // Links sit right under the genes, so they're visible without scrolling past the tracks
   const linkRowTop = MARGIN.top + geneRowHeight + 4;
-  const tracksTop = linkRowTop + (showLinks ? LINK_ROW_HEIGHT : 0) + 20;
+  const tracksTop = linkRowTop + (showLinks ? LINK_ROW_HEIGHT : 0) + 8;
   const tracksHeight = groups.value.length * (trackHeight.value + TRACK_GAP);
   const tracksBottom = tracksTop + tracksHeight;
   const height = tracksBottom + MARGIN.bottom;
@@ -618,31 +648,51 @@ function drawFocus(svg, x, clampX, bottom, v) {
   g.append("title").text(`Selected peak\n${v.chrom}:${formatBp(f.start)}–${formatBp(f.end)}`);
 }
 
-// Greedy packing so overlapping genes (and their labels) get separate rows
+// Pack genes (with their labels) into as few rows as possible. The target gene goes first,
+// in the top row; each other gene takes the first row where it overlaps nothing.
 function assignLanes(genes, clampX, targetName) {
   const sorted = [...genes].sort((a, b) =>
     a.name === targetName ? -1 : b.name === targetName ? 1 : a.start - b.start
   );
-  const laneEnds = [];
+  const occupied = []; // per lane: [[left, right], ...]
   const lanes = [];
   for (const gene of sorted) {
-    // The label is centered under the visible part of the gene
     const x1 = clampX(gene.start);
     const x2 = clampX(gene.end);
     const half = labelWidth(gene.name) / 2;
     const left = Math.min(x1, (x1 + x2) / 2 - half) - 6;
     const right = Math.max(x2, (x1 + x2) / 2 + half) + 6;
-    let lane = laneEnds.findIndex((laneEnd) => left > laneEnd);
+    let lane = occupied.findIndex((spans) => spans.every(([l, r]) => right < l || left > r));
     if (lane === -1) {
-      lane = laneEnds.length;
-      laneEnds.push(right);
+      lane = occupied.length;
+      occupied.push([]);
       lanes.push([]);
-    } else {
-      laneEnds[lane] = right;
     }
+    occupied[lane].push([left, right]);
     lanes[lane].push(gene);
   }
   return lanes;
+}
+
+// Top of gene lane i (lane 0 is the target gene's, taller for the TSS arrow)
+function laneTop(i) {
+  return MARGIN.top + (i > 0 ? GENE_LANE_HEIGHT + (i - 1) * OTHER_LANE_HEIGHT : 0);
+}
+
+// Vertical center of the gene line in lane i
+function laneMid(i) {
+  return laneTop(i) + (i === 0 ? 24 : 12);
+}
+
+// Left margin just wide enough for the longest row label (cell types, "Genes"), so the
+// plot gets the rest of the width
+let measureCtx = null;
+function fitLeftMargin(svgEl, width) {
+  measureCtx = measureCtx || document.createElement("canvas").getContext("2d");
+  measureCtx.font = `14px ${getComputedStyle(svgEl).fontFamily}`;
+  const labels = ["Genes", "Links", ...groups.value.map((g) => truncate(g, 18))];
+  const widest = Math.max(...labels.map((t) => measureCtx.measureText(t).width));
+  MARGIN.left = Math.round(Math.min(Math.max(widest + 20, 70), width * 0.3));
 }
 
 // Rough width of a 14px label, for lane packing
@@ -698,9 +748,17 @@ function drawTssArrow(parent, gene, x, mid, color, v) {
 
 function drawGeneModel(svg, lanes, x, clampX, v) {
   const g = svg.append("g").attr("class", "gene-model");
+  if (!lanes.length) {
+    g.append("text")
+      .attr("x", MARGIN.left + 4)
+      .attr("y", laneMid(0) + 5)
+      .attr("font-size", 14)
+      .attr("fill", "#94a3b8")
+      .text("No genes in this window");
+  }
   lanes.forEach((lane, i) => {
-    // Room above the gene for the TSS arrow, below it for the label
-    const mid = MARGIN.top + i * GENE_LANE_HEIGHT + 24;
+    // Room above the target gene for the TSS arrow, below each gene for its label
+    const mid = laneMid(i);
     for (const gene of lane) {
       const isTarget = gene.name === v.gene.name;
       const color = isTarget ? accentColor : OTHER_GENE_COLOR;
@@ -785,7 +843,7 @@ function drawGeneModel(svg, lanes, x, clampX, v) {
   svg
     .append("text")
     .attr("x", MARGIN.left - 10)
-    .attr("y", MARGIN.top + 24 + 5)
+    .attr("y", laneMid(0) + 5)
     .attr("text-anchor", "end")
     .attr("font-size", 14)
     .attr("font-weight", 600)
@@ -878,18 +936,9 @@ function drawTracks(svg, x, top, width, v) {
     }
   });
 
-  svg
-    .append("text")
-    .attr("x", width - MARGIN.right)
-    .attr("y", top - 3)
-    .attr("text-anchor", "end")
-    .attr("font-size", 14)
-    .attr("fill", "#64748b")
-    .text(
-      perTrack
-        ? `Each track scaled to its own max (${unit})`
-        : `Scale: 0–${formatSignal(yMax)} ${unit} (same for all tracks)`
-    );
+  scaleNote.value = perTrack
+    ? `Tracks: each scaled to its own max (${unit})`
+    : `Tracks: 0–${formatSignal(yMax)} ${unit}, same scale for all`;
 }
 
 // Vertical guide across the tracks; the hover card lists every track's value there
@@ -964,10 +1013,9 @@ function drawLinkArcs(svg, x, top, width, v, links, showBand) {
   const tssX = x(geneTss(v.gene));
   const g = svg.append("g").attr("class", "links");
 
-  // Row label and color key in the left margin
   g.append("text")
     .attr("x", left - 10)
-    .attr("y", top + 16)
+    .attr("y", baseline - 4)
     .attr("text-anchor", "end")
     .attr("font-size", 14)
     .attr("font-weight", 600)
@@ -977,26 +1025,6 @@ function drawLinkArcs(svg, x, top, width, v, links, showBand) {
     .text(
       `Arcs join each linked peak to ${v.gene.name}'s TSS. Thicker, darker arcs have a larger |r| (scale 0–${CORRELATION_SCALE_MAX}).`
     );
-  [
-    ["r > 0", POSITIVE_COLOR],
-    ["r < 0", NEGATIVE_COLOR],
-  ].forEach(([label, color], i) => {
-    const y = top + 36 + i * 18;
-    g.append("line")
-      .attr("x1", left - 82)
-      .attr("x2", left - 62)
-      .attr("y1", y - 5)
-      .attr("y2", y - 5)
-      .attr("stroke", color)
-      .attr("stroke-width", 3);
-    g.append("text")
-      .attr("x", left - 10)
-      .attr("y", y)
-      .attr("text-anchor", "end")
-      .attr("font-size", 14)
-      .attr("fill", "#475569")
-      .text(label);
-  });
 
   g.append("line")
     .attr("x1", left)
@@ -1291,14 +1319,48 @@ function formatBp(value) {
 
 .controls {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 16px;
+  flex-direction: column;
+  gap: 6px;
   padding: 6px 10px;
   background: var(--pdw-surface-muted);
   border: 1px solid var(--pdw-border);
   border-radius: 2px;
   flex-shrink: 0;
+}
+
+.control-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 2px 10px 0;
+  font-size: 14px;
+  color: var(--pdw-text-muted);
+  flex-shrink: 0;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.legend-sep {
+  color: var(--pdw-border);
 }
 
 .label {
