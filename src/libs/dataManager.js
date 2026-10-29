@@ -44,6 +44,8 @@ export class UMAPGeneViewer {
     this.geneCache = new Map();
     this._prefix = `precision/${++viewerCount}/`;
     this._files = new Set(); // registered names, dropped on dispose
+    this._loadedChromatinFiles = new Set();
+    this._chromatinListeners = new Set();
   }
 
   /** This viewer's name for a data file in the shared DuckDB. */
@@ -595,12 +597,29 @@ export class UMAPGeneViewer {
     if (!this._chromatinFiles.has(name)) {
       // Skip files the manifest says are missing; without a manifest, try anyway
       const listed = this.chromatinInfo?.[manifestFlag];
-      this._chromatinFiles.set(
-        name,
-        listed === false ? Promise.resolve(false) : this._registerOptional(name)
-      );
+      const load = listed === false ? Promise.resolve(false) : this._registerOptional(name);
+      load.then((ok) => {
+        if (!ok) return;
+        this._loadedChromatinFiles.add(name);
+        this._chromatinListeners.forEach((fn) => fn(name));
+      });
+      this._chromatinFiles.set(name, load);
     }
     return this._chromatinFiles.get(name);
+  }
+
+  /** True once a chromatin file has been downloaded (by any view). */
+  isChromatinFileLoaded(name) {
+    return this._loadedChromatinFiles.has(name);
+  }
+
+  /**
+   * Call `fn(name)` whenever a chromatin file finishes loading, so a view can use a file
+   * another view downloaded. Returns an unsubscribe function.
+   */
+  onChromatinFileLoaded(fn) {
+    this._chromatinListeners.add(fn);
+    return () => this._chromatinListeners.delete(fn);
   }
 
   async _registerOptional(name) {
@@ -655,6 +674,57 @@ export class UMAPGeneViewer {
       FROM "${this._file("chromatin_tracks.parquet")}"
       WHERE chrom IN (${chromVariants(chrom)})
         AND position_end >= ${start} AND position_start <= ${end}
+    `);
+    return rows.map((r) => ({
+      group: String(r.cell_type),
+      start: Number(r.position_start),
+      end: Number(r.position_end),
+      signal: Number(r.signal_value),
+    }));
+  }
+
+  /**
+   * Cells and reads in peaks per cell type, for depth-normalizing the tracks.
+   * Reads come from the cell metadata column nCount_<chromatin assay> (e.g.
+   * nCount_ATAC_macs2), the same peak counts the tracks are built from.
+   * Returns { readsColumn, groups: Map(cellType → { cells, reads }) }, or null when the
+   * metadata has no such column.
+   */
+  getChromatinDepth() {
+    if (this._chromatinDepth !== undefined) return this._chromatinDepth;
+    const source = { ...this.manifest, ...this.config };
+    const typeColumn = source.cellTypeColumn || source.cell_type_column || "cell_type";
+    const assay = source.provenance?.chromatin_assay?.value;
+    const sample = this._cellMetadata?.values().next().value;
+    const readsColumn = [assay && `nCount_${assay}`, "nCount_ATAC", "nCount_peaks"].find(
+      (c) => c && sample && c in sample
+    );
+    if (!readsColumn || !(typeColumn in sample)) {
+      this._chromatinDepth = null;
+      return null;
+    }
+    const groups = new Map();
+    for (const row of this._cellMetadata.values()) {
+      const type = row[typeColumn];
+      const reads = Number(row[readsColumn]);
+      if (type == null || !Number.isFinite(reads)) continue;
+      const g = groups.get(String(type)) || { cells: 0, reads: 0 };
+      g.cells += 1;
+      g.reads += reads;
+      groups.set(String(type), g);
+    }
+    this._chromatinDepth = { readsColumn, groups };
+    return this._chromatinDepth;
+  }
+
+  /** Per-cell-type signal at exact peaks: [{ group, start, end, signal }]. */
+  async getPeakSignals(chrom, peaks) {
+    if (!peaks.length) return [];
+    const starts = [...new Set(peaks.map((p) => Number(p.start)))].join(", ");
+    const rows = await this._query(`
+      SELECT cell_type, position_start, position_end, signal_value
+      FROM "${this._file("chromatin_tracks.parquet")}"
+      WHERE chrom IN (${chromVariants(chrom)}) AND position_start IN (${starts})
     `);
     return rows.map((r) => ({
       group: String(r.cell_type),

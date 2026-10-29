@@ -192,7 +192,7 @@
                         :title="methodNote"
                       >Calc</span>
                     </th>
-                    <th :title="MOST_OPEN_TOOLTIP">
+                    <th :title="mostOpenHeaderTitle">
                       Most open in
                       <span
                         v-if="columnInfo('top_cell_type').computed"
@@ -231,7 +231,10 @@
                       </div>
                     </td>
                     <td class="mono">{{ formatPValue(link.pValue) }}</td>
-                    <td>{{ link.topCellType ?? "—" }}</td>
+                    <td :title="mostOpenTitle(link)">
+                      {{ mostOpenType(link) }}
+                      <span v-if="!mostOpen.size && link.topCellType" class="muted">*</span>
+                    </td>
                   </tr>
                   <tr v-if="!visibleLinks.length">
                     <td colspan="6" class="muted center">No links match these filters.</td>
@@ -294,6 +297,9 @@ import {
   formatDistance,
   formatPValue,
 } from "./linkedPeaks.js";
+import { mostOpenByPeak, peakKey, formatSignal } from "../shared/chromatinSignal.js";
+
+const TRACKS_FILE = "chromatin_tracks.parquet";
 
 const props = defineProps({
   dataPath: { type: String, default: "/data" },
@@ -328,6 +334,9 @@ const selectedGene = ref(props.gene || "");
 const geneSuggestions = ref([]);
 
 const links = shallowRef([]);
+// Depth-normalized most-open cell type per peak ("start-end" → { group, rpm, meanSignal }),
+// when the chromatin tracks are loaded; empty means the processor's top_cell_type is shown
+const mostOpen = shallowRef(new Map());
 const sortBy = ref("strength");
 const tableScroll = ref(null);
 
@@ -349,6 +358,8 @@ const selectedTypes = filterModel("types");
 const showAbout = ref(false);
 
 let searchTimeout = null;
+let stopTracksListener = null;
+let mostOpenSeq = 0;
 
 const prov = computed(() => linkProvenance(activeConfig.value?.provenance));
 const methodNote = computed(() => describeLinkMethod(prov.value.info));
@@ -403,6 +414,11 @@ watch(
 async function initWithViewer(viewerInstance) {
   try {
     manager.value = viewerInstance;
+    // The tracks are large, so they're only used when the chromatin view has loaded them
+    stopTracksListener?.();
+    stopTracksListener = viewerInstance.onChromatinFileLoaded((name) => {
+      if (name === TRACKS_FILE) updateMostOpen();
+    });
     hasLinksFile.value = await viewerInstance.loadLinkedPeaks();
     loading.value = false;
     if (hasLinksFile.value && selectedGene.value) await loadLinks();
@@ -426,6 +442,7 @@ useWidgetDataEngine({
 
 onBeforeUnmount(() => {
   if (searchTimeout) clearTimeout(searchTimeout);
+  stopTracksListener?.();
 });
 
 function debouncedSearchGenes() {
@@ -457,6 +474,7 @@ async function loadLinks() {
   try {
     const result = await manager.value.getLinksForGene(selectedGene.value);
     links.value = result;
+    updateMostOpen();
     // Keep the slider in range for the new gene
     if (minAbsCorrelation.value > correlationMax.value) minAbsCorrelation.value = 0;
     if (!result.length) message.value = noLinksMessage(selectedGene.value);
@@ -488,6 +506,49 @@ function selectLink(link) {
 function isSelected(link) {
   const f = props.focusedPeak;
   return !!f && String(f.gene).toUpperCase() === selectedGene.value.toUpperCase() && samePeak(f, link);
+}
+
+// Recompute "most open in" by reads per million in peaks, if the tracks are loaded
+async function updateMostOpen() {
+  const seq = ++mostOpenSeq;
+  const m = manager.value;
+  const current = links.value;
+  const depth = m?.getChromatinDepth();
+  if (!current.length || !depth || !m.isChromatinFileLoaded(TRACKS_FILE)) {
+    mostOpen.value = new Map();
+    return;
+  }
+  try {
+    const signals = await m.getPeakSignals(current[0].chrom, current);
+    if (seq === mostOpenSeq) mostOpen.value = mostOpenByPeak(signals, depth);
+  } catch (err) {
+    console.warn("Could not recompute most-open cell types:", err);
+    if (seq === mostOpenSeq) mostOpen.value = new Map();
+  }
+}
+
+const mostOpenHeaderTitle = computed(() =>
+  mostOpen.value.size
+    ? `${MOST_OPEN_TOOLTIP} Ranked by reads per million in peaks (depth-normalized, calculated in the dashboard).`
+    : `${MOST_OPEN_TOOLTIP} * Ranked by mean counts per cell, not adjusted for sequencing depth: open the Chromatin Accessibility view to rank by reads per million.`
+);
+
+function mostOpenType(link) {
+  return mostOpen.value.get(peakKey(link))?.group ?? link.topCellType ?? "—";
+}
+
+function mostOpenTitle(link) {
+  const processor =
+    link.topCellType != null
+      ? `${link.topCellType}: ${formatSignal(link.topCellTypeSignal ?? 0)} mean counts per cell (processor's value, not depth-normalized)`
+      : null;
+  const best = mostOpen.value.get(peakKey(link));
+  if (!best) return processor ?? "";
+  const lines = [
+    `${best.group}: ${formatSignal(best.rpm)} reads per million in peaks (depth-normalized, calculated in the dashboard)`,
+  ];
+  if (processor) lines.push(processor);
+  return lines.join("\n");
 }
 
 function columnInfo(name) {

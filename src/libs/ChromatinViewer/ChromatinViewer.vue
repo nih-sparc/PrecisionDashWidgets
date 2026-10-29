@@ -82,23 +82,12 @@
 
           <label class="label">
             Signal:
-            <SegmentedToggle
-              v-model="signalMode"
-              aria-label="Signal"
-              :options="[
-                {
-                  key: 'normalized',
-                  label: 'Normalized',
-                  title: 'Mean counts per cell, so groups of different sizes are comparable',
-                },
-                {
-                  key: 'raw',
-                  label: 'Raw',
-                  disabled: !hasCellCounts,
-                  title: 'Total counts in the group (larger groups have higher signal)',
-                },
-              ]"
-            />
+            <SegmentedToggle v-model="signalMode" aria-label="Signal" :options="signalOptions" />
+            <span
+              v-if="signalMode === 'rpm'"
+              class="calc-badge"
+              :title="`${SIGNAL_MODES[0].title} Reads in peaks per cell: ${depth?.readsColumn}.`"
+            >Calculated</span>
           </label>
 
           <label
@@ -154,6 +143,7 @@ import { ref, shallowRef, computed, onBeforeUnmount, watch, nextTick } from "vue
 import * as d3 from "d3";
 import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
+import { SIGNAL_MODES, readsPerMillion, formatSignal } from "../shared/chromatinSignal.js";
 import {
   CORRELATION_SCALE_MAX,
   LINK_TYPES,
@@ -234,15 +224,22 @@ const message = ref("");
 
 const available = ref({ tracks: false, geneCoords: false, links: false });
 const groups = ref([]);
-const cellCounts = shallowRef(new Map());
-const hasCellCounts = computed(() => cellCounts.value.size > 0);
+// Cells and reads in peaks per cell type (dataManager.getChromatinDepth()), or null
+const depth = shallowRef(null);
+const signalOptions = computed(() =>
+  SIGNAL_MODES.map((m) => ({
+    ...m,
+    disabled: m.key !== "mean" && !depth.value,
+    title: m.key !== "mean" && !depth.value ? `${m.title} (Not available: no read counts per cell.)` : m.title,
+  }))
+);
 
 const geneSearch = ref(props.gene || "");
 const selectedGene = ref(props.gene || "");
 const geneSuggestions = ref([]);
 const flank = ref(50000);
 const groupBy = ref("cell_type");
-const signalMode = ref("normalized");
+const signalMode = ref("rpm");
 const highlightLinks = ref(true);
 
 // { gene, chrom, start, end, genes, signal, links }
@@ -320,7 +317,8 @@ async function initWithViewer(viewerInstance) {
 
     if (available.value.tracks) {
       groups.value = sortGroups(await viewerInstance.getChromatinGroups());
-      cellCounts.value = await countCellsPerGroup(viewerInstance);
+      depth.value = viewerInstance.getChromatinDepth();
+      if (!depth.value) signalMode.value = "mean";
     }
     if (!available.value.links) highlightLinks.value = false;
 
@@ -341,24 +339,6 @@ async function initWithViewer(viewerInstance) {
     error.value = `Failed to load data: ${err.message}`;
     loading.value = false;
   }
-}
-
-// Cells per group, used to turn mean signal back into raw totals
-async function countCellsPerGroup(viewerInstance) {
-  const column = activeConfig.value?.cellTypeColumn || "cell_type";
-  const counts = new Map();
-  try {
-    const cells = await viewerInstance.getReductionData();
-    for (let i = 0; i < cells.length; i++) {
-      const value = cells[i][column];
-      if (value == null) continue;
-      const key = String(value);
-      counts.set(key, (counts.get(key) || 0) + 1);
-    }
-  } catch (err) {
-    console.warn("Could not count cells per group:", err);
-  }
-  return counts;
 }
 
 // Shared engine: the provider's, or one per data URL shared with the other widgets
@@ -455,8 +435,10 @@ function regionAround(gene, links) {
 }
 
 function signalValue(d) {
-  if (signalMode.value === "normalized") return d.signal;
-  return d.signal * (cellCounts.value.get(d.group) || 0);
+  const group = depth.value?.groups.get(d.group);
+  if (signalMode.value === "rpm") return readsPerMillion(d.signal, group) ?? 0;
+  if (signalMode.value === "total") return d.signal * (group?.cells || 0);
+  return d.signal;
 }
 
 function draw() {
@@ -739,7 +721,7 @@ function drawTracks(svg, x, top, width, v) {
   const yMax = d3.max(v.signal, signalValue) || 1;
   const y = d3.scaleLinear().domain([0, yMax]).range([0, TRACK_HEIGHT - 4]);
   const color = d3.scaleOrdinal(d3.schemeTableau10).domain(groups.value);
-  const unit = signalMode.value === "normalized" ? "mean counts per cell" : "total counts";
+  const unit = SIGNAL_MODES.find((m) => m.key === signalMode.value).unit;
 
   // Row backgrounds go underneath everything so link and focus highlights stay visible
   const backgrounds = svg.insert("g", ":first-child").attr("class", "track-backgrounds");
@@ -765,7 +747,7 @@ function drawTracks(svg, x, top, width, v) {
       .attr("y2", baseline)
       .attr("stroke", "#cbd5e1");
 
-    const cells = cellCounts.value.get(group);
+    const cells = depth.value?.groups.get(group)?.cells;
     row
       .append("text")
       .attr("x", MARGIN.left - 10)
@@ -1067,11 +1049,6 @@ function formatBp(value) {
   return Math.round(value).toLocaleString();
 }
 
-function formatSignal(value) {
-  if (value >= 100) return Math.round(value).toLocaleString();
-  if (value >= 1) return value.toFixed(2);
-  return value.toPrecision(2);
-}
 </script>
 
 <style scoped>
@@ -1268,6 +1245,19 @@ function formatSignal(value) {
 
 .plot-svg {
   display: block;
+}
+
+.calc-badge {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid #c4b5fd;
+  border-radius: 3px;
+  background: #f5f3ff;
+  color: #6d28d9;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 18px;
+  cursor: help;
 }
 
 .chart-tooltip {
