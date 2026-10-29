@@ -572,6 +572,11 @@ export class UMAPGeneViewer {
   // ---- Chromatin (multiome only) ----
   // Files are fetched on first use, so RNA-only datasets never pay for them.
 
+  /** manifest.json `provenance`: which outputs the processor calculated, and how. */
+  get provenance() {
+    return this.config?.provenance || this.manifest?.provenance || null;
+  }
+
   get chromatinInfo() {
     return this.config?.chromatin || this.manifest?.chromatin || null;
   }
@@ -694,7 +699,7 @@ export class UMAPGeneViewer {
     if (this._chromatinDepth !== undefined) return this._chromatinDepth;
     const source = { ...this.manifest, ...this.config };
     const typeColumn = source.cellTypeColumn || source.cell_type_column || "cell_type";
-    const assay = source.provenance?.chromatin_assay?.value;
+    const assay = this.provenance?.chromatin_assay?.value;
     const sample = this._cellMetadata?.values().next().value;
     const readsColumn = [assay && `nCount_${assay}`, "nCount_ATAC", "nCount_peaks"].find(
       (c) => c && sample && c in sample

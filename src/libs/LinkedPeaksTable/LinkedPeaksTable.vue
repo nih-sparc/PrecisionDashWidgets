@@ -399,7 +399,11 @@ let searchTimeout = null;
 let stopTracksListener = null;
 let mostOpenSeq = 0;
 
-const prov = computed(() => linkProvenance(activeConfig.value?.provenance));
+// Host apps often pass their own config without the manifest fields; the data engine has
+// read the manifest either way
+const prov = computed(() =>
+  linkProvenance(activeConfig.value?.provenance || manager.value?.provenance)
+);
 const methodNote = computed(() => describeLinkMethod(prov.value.info));
 const anyComputed = computed(
   () => prov.value.linksComputed || Object.values(prov.value.columns).some((c) => c.computed)
