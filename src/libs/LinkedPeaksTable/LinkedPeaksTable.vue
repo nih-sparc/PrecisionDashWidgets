@@ -188,8 +188,8 @@
                         :title="methodNote"
                       >Calc</span>
                     </th>
-                    <th>
-                      Top cell type
+                    <th :title="MOST_OPEN_TOOLTIP">
+                      Most open in
                       <span
                         v-if="columnInfo('top_cell_type').computed"
                         class="calc-badge"
@@ -216,7 +216,7 @@
                     <td>{{ formatDistance(link.distance) }}</td>
                     <td>
                       <div class="corr-cell">
-                        <div class="corr-bar-track">
+                        <div class="corr-bar-track" :title="`Bar spans |r| from 0 to ${CORRELATION_SCALE_MAX}`">
                           <div
                             class="corr-bar"
                             :class="(link.correlation ?? 0) < 0 ? 'neg' : 'pos'"
@@ -275,6 +275,9 @@ import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/u
 import {
   LINK_TYPES,
   SORT_OPTIONS,
+  CORRELATION_SCALE_MAX,
+  MOST_OPEN_TOOLTIP,
+  correlationStrength,
   hasLinkTypes,
   filterLinks,
   sortLinks,
@@ -459,8 +462,7 @@ function typeLabel(value) {
 }
 
 function corrWidth(r) {
-  if (r == null) return 0;
-  return Math.min(100, (Math.abs(r) / correlationMax.value) * 100);
+  return correlationStrength(r) * 100;
 }
 </script>
 

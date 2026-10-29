@@ -4,8 +4,21 @@
 export const LINK_TYPES = [
   { value: "promoter", label: "Promoter" },
   { value: "intronic", label: "Intronic" },
-  { value: "distal", label: "Distal enhancer" },
+  { value: "distal", label: "Distal" },
 ];
+
+// Correlation bars and link arcs share one fixed |r| scale, so a weak link looks weak for
+// every gene (scaling to each gene's strongest link made r = 0.08 look as strong as 0.3)
+export const CORRELATION_SCALE_MAX = 0.5;
+
+export const MOST_OPEN_TOOLTIP =
+  "Cell type with the highest accessibility at this peak. The correlation itself is computed across all cells.";
+
+/** 0..1 position of |r| on the shared scale. */
+export function correlationStrength(r) {
+  if (r == null) return 0;
+  return Math.min(1, Math.abs(r) / CORRELATION_SCALE_MAX);
+}
 
 export const SORT_OPTIONS = [
   { value: "strength", label: "Strongest correlation (|r|)" },
