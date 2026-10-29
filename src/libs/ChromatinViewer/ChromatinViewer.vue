@@ -84,7 +84,7 @@
           </div>
 
           <div class="control-row">
-            <label class="label" :title="currentSignal.title">
+            <label class="label inline" :title="currentSignal.title">
               <span class="label-text">
                 Signal:
                 <span
@@ -118,12 +118,13 @@
               Scale:
               <SegmentedToggle v-model="trackScale" aria-label="Track scale" :options="SCALE_OPTIONS" />
             </div>
-            <div class="label inline">
-              Tracks:
-              <SegmentedToggle v-model="trackHeight" aria-label="Track height" :options="HEIGHT_OPTIONS" />
-            </div>
+            <div class="pair-row">
+              <div class="label inline">
+                Tracks:
+                <SegmentedToggle v-model="trackHeight" aria-label="Track height" :options="HEIGHT_OPTIONS" />
+              </div>
 
-            <label
+              <label
               class="checkbox-label"
               :class="{ disabled: !available.links }"
               :title="available.links ? 'Arcs from the gene\'s TSS to each linked peak' : 'Linked peaks aren\'t available for this dataset'"
@@ -135,7 +136,8 @@
                 :disabled="!available.links"
               />
               Links
-            </label>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -146,30 +148,38 @@
             <p>Loading tracks...</p>
           </div>
           <div v-if="message" class="plot-message">{{ message }}</div>
+          <!-- One line: what's shown. The key (colors, scale) opens on hover or focus -->
           <div v-if="view" class="region-label">
-            <strong>{{ view.gene.name }}</strong>
-            <span class="strand-note">({{ strandNote(view.gene) }})</span>
-            {{ view.chrom }}:{{ formatBp(view.start) }}–{{ formatBp(view.end) }}
-            <template v-if="view.zoomed">
-              <span class="zoom-note">· zoomed to ±5 kb around the selected peak</span>
-              <button type="button" class="pdw-btn back-btn" @click="setZoom(null)">
-                Back to full view
-              </button>
-            </template>
-            <span v-else-if="available.links && highlightLinks" class="link-summary">· {{ linkSummary }}</span>
-          </div>
-          <div v-if="view" class="legend">
-            <template v-if="available.links && highlightLinks">
-              <span class="legend-item"><span class="swatch" :style="{ background: POSITIVE_COLOR }"></span>r &gt; 0</span>
-              <span class="legend-item"><span class="swatch" :style="{ background: NEGATIVE_COLOR }"></span>r &lt; 0</span>
-              <span :title="`Arc width and opacity follow |r| on a fixed 0–${CORRELATION_SCALE_MAX} scale`">
-                thicker arc = larger |r|
-              </span>
-              <span class="legend-sep">·</span>
-              <span title="Peaks not linked to this gene are drawn lighter">faded bars: not linked</span>
-              <span class="legend-sep">·</span>
-            </template>
-            <span>{{ scaleNote }}</span>
+            <span class="region-text">
+              <strong>{{ view.gene.name }}</strong>
+              <span class="strand-note">({{ strandNote(view.gene) }})</span>
+              {{ view.chrom }}:{{ formatBp(view.start) }}–{{ formatBp(view.end) }}
+              <template v-if="view.zoomed">· zoomed to ±5 kb around the selected peak</template>
+              <template v-else-if="available.links && highlightLinks">· {{ linkCount }}</template>
+            </span>
+            <button v-if="view.zoomed" type="button" class="pdw-btn back-btn" @click="setZoom(null)">
+              Back to full view
+            </button>
+            <div class="key-wrap">
+              <button type="button" class="key-btn" aria-label="Show the key">ⓘ Key</button>
+              <div class="key-panel" role="tooltip">
+                <template v-if="available.links && highlightLinks">
+                  <div class="key-heading">Links</div>
+                  <div v-for="note in linkNotes" :key="note">{{ note }}</div>
+                  <div class="key-item">
+                    <span class="swatch" :style="{ background: POSITIVE_COLOR }"></span>r &gt; 0: opens as the gene goes up
+                  </div>
+                  <div class="key-item">
+                    <span class="swatch" :style="{ background: NEGATIVE_COLOR }"></span>r &lt; 0: closes as the gene goes up
+                  </div>
+                  <div>Thicker, darker arcs have a larger |r| (scale 0–{{ CORRELATION_SCALE_MAX }}).</div>
+                  <div>Faded bars are peaks not linked to {{ view.gene.name }}.</div>
+                </template>
+                <div class="key-heading">Tracks</div>
+                <div>{{ scaleNote }}</div>
+                <div>Hover the tracks to see each cell type's value.</div>
+              </div>
+            </div>
           </div>
           <!-- Axis, genes and links stay in view while the tracks scroll -->
           <svg ref="headSvg" class="plot-svg"></svg>
@@ -387,16 +397,26 @@ const shownLinks = computed(() => {
   return filterLinks(links, linkFilterOptions(props.linkFilters, links));
 });
 
-const linkSummary = computed(() => {
+// Short count for the header line; the details go in the key
+const linkCount = computed(() => {
+  const v = view.value;
+  if (!v?.links?.length) return `no linked peaks for ${v.gene.name}`;
+  const n = shownLinks.value.length;
+  return `${n} linked peak${n === 1 ? "" : "s"}`;
+});
+
+const linkNotes = computed(() => {
   const v = view.value;
   const links = v?.links || [];
-  if (!links.length) return `No linked peaks for ${v.gene.name}.`;
+  if (!links.length) return [`No linked peaks for ${v.gene.name}.`];
   const shown = shownLinks.value;
+  const notes = [];
+  if (shown.length !== links.length) {
+    notes.push(`${shown.length} of ${links.length} shown; the rest are hidden by the Linked Peaks filters.`);
+  }
   const outside = shown.filter((l) => l.end < v.start || l.start > v.end).length;
-  let text = `${shown.length} linked peak${shown.length === 1 ? "" : "s"}`;
-  if (shown.length !== links.length) text += ` (of ${links.length}; the rest are hidden by the Linked Peaks filters)`;
-  if (outside) text += ` · ${outside} outside this region, marked at the edges`;
-  return text;
+  if (outside) notes.push(`${outside} outside this region, counted at the plot edges.`);
+  return notes;
 });
 
 // The gene is shared with the Linked Peaks panel; names compare case-insensitively, as there
@@ -1041,12 +1061,12 @@ function drawTracks(svg, x, top, width, v, order) {
     }
   });
 
-  if (perTrack) scaleNote.value = `Tracks: each scaled to its own max (${unit})`;
+  if (perTrack) scaleNote.value = `Each track scaled to its own max (${unit}).`;
   else if (fitLinks) {
     scaleNote.value =
-      `Tracks: 0–${formatSignal(yMax)} ${unit}, fitted to the linked peaks` +
-      (allMax > yMax ? ` (taller peaks, up to ${formatSignal(allMax)}, are cut off at a dark cap)` : "");
-  } else scaleNote.value = `Tracks: 0–${formatSignal(yMax)} ${unit}, same scale for all`;
+      `0–${formatSignal(yMax)} ${unit}, fitted to the linked peaks` +
+      (allMax > yMax ? `. Taller peaks (up to ${formatSignal(allMax)}) are cut off at a dark cap.` : ".");
+  } else scaleNote.value = `0–${formatSignal(yMax)} ${unit}, same scale for all tracks.`;
 }
 
 // Peaks are 500 bp, under a pixel wide in a large region: draw each at least
@@ -1489,27 +1509,25 @@ function formatBp(value) {
   gap: 6px 14px;
 }
 
+/* Two short controls on one line */
+.pair-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+
 .label-text {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 2px 10px;
-  padding: 2px 10px 0;
-  font-size: 14px;
-  color: var(--pdw-text-muted);
-  flex-shrink: 0;
-}
-
-.legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.region-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .swatch {
@@ -1517,10 +1535,68 @@ function formatBp(value) {
   width: 16px;
   height: 3px;
   border-radius: 2px;
+  flex-shrink: 0;
 }
 
-.legend-sep {
-  color: var(--pdw-border);
+/* Key: a small button that shows the legend on hover or keyboard focus */
+.key-wrap {
+  position: relative;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.key-btn {
+  padding: 0 6px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  color: var(--pdw-text-muted);
+  cursor: help;
+}
+
+.key-btn:hover,
+.key-btn:focus-visible {
+  color: var(--pdw-primary);
+}
+
+.key-panel {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 25;
+  width: 320px;
+  padding: 8px 12px;
+  background: var(--pdw-surface);
+  border: 1px solid var(--pdw-border);
+  border-radius: var(--pdw-radius);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+  font-size: 14px;
+  color: var(--pdw-text-muted);
+  white-space: normal;
+}
+
+.key-wrap:hover .key-panel,
+.key-wrap:focus-within .key-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.key-heading {
+  margin-top: 4px;
+  font-weight: 600;
+  color: var(--pdw-text);
+}
+
+.key-heading:first-child {
+  margin-top: 0;
+}
+
+.key-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .label {
@@ -1641,14 +1717,13 @@ function formatBp(value) {
 }
 
 .region-label {
-  padding: 6px 10px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 2px;
   font-size: 14px;
   color: #475569;
   flex-shrink: 0;
-}
-
-.link-summary {
-  color: var(--pdw-text-muted);
 }
 
 .strand-note {
@@ -1729,10 +1804,6 @@ function formatBp(value) {
 
 .back-btn {
   margin-left: 8px;
-}
-
-.zoom-note {
-  color: var(--pdw-text-muted);
 }
 
 .loading-container,
@@ -1833,27 +1904,27 @@ function formatBp(value) {
   }
 
   .controls {
-    width: 250px;
+    width: 270px;
     flex-shrink: 0;
     align-self: flex-start;
     max-height: 100%;
     overflow-y: auto;
     box-sizing: border-box;
-    padding: 10px;
-    gap: 10px;
+    padding: 8px 10px;
+    gap: 6px;
   }
 
   .control-row {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: 6px;
   }
 
   /* Label above its control, or beside it when both fit on a line */
   .controls .label:not(.inline) {
     flex-direction: column;
     align-items: stretch;
-    gap: 4px;
+    gap: 2px;
   }
 
   .controls .label.inline > :first-child:not(select) {
