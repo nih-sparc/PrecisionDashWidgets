@@ -170,7 +170,13 @@ import { ref, shallowRef, computed, onBeforeUnmount, watch, nextTick } from "vue
 import * as d3 from "d3";
 import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
-import { SIGNAL_MODES, readsPerMillion, formatSignal } from "../shared/chromatinSignal.js";
+import {
+  SIGNAL_MODES,
+  readsPerMillion,
+  formatSignal,
+  mostOpenByPeak,
+  peakKey,
+} from "../shared/chromatinSignal.js";
 import {
   CORRELATION_SCALE_MAX,
   LINK_TYPES,
@@ -1190,7 +1196,22 @@ function linkTipLines(v, l) {
     lines.push(`Type: ${LINK_TYPES.find((t) => t.value === l.linkType)?.label ?? l.linkType}`);
   }
   lines.push(`Distance: ${formatDistance(l.distance)}`);
-  lines.push(`r = ${formatR(l.correlation)} · p = ${formatPValue(l.pValue)}`);
+  lines.push(
+    `r = ${formatR(l.correlation)} · p = ${formatPValue(l.pValue)}` +
+      (l.zscore != null ? ` · z = ${l.zscore.toFixed(2)}` : "")
+  );
+  // Depth-normalized when the peak's signal is loaded (it's in view), else the processor's
+  const best = mostOpenByPeak(
+    v.signal.filter((d) => d.start === l.start && d.end === l.end),
+    depth.value
+  ).get(peakKey(l));
+  if (best) {
+    lines.push(`Most open in: ${best.group} (${formatSignal(best.rpm)} reads per million in peaks)`);
+  } else if (l.topCellType) {
+    lines.push(
+      `Most open in: ${l.topCellType} (${formatSignal(l.topCellTypeSignal ?? 0)} mean counts per cell, not depth-normalized)`
+    );
+  }
   lines.push(isFocused(v, l) ? "Click to clear the selection" : "Click to select");
   return lines;
 }

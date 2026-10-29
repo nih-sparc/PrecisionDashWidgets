@@ -280,7 +280,7 @@
                       <span v-else class="muted">—</span>
                     </td>
                     <td>{{ formatDistance(link.distance) }}</td>
-                    <td>
+                    <td :title="statsTitle(link)">
                       <div class="corr-cell">
                         <div class="corr-bar-track" :title="`Bar spans |r| from 0 to ${CORRELATION_SCALE_MAX}`">
                           <div
@@ -292,7 +292,7 @@
                         <span class="mono">{{ link.correlation == null ? "—" : link.correlation.toFixed(3) }}</span>
                       </div>
                     </td>
-                    <td class="mono">{{ formatPValue(link.pValue) }}</td>
+                    <td class="mono" :title="statsTitle(link)">{{ formatPValue(link.pValue) }}</td>
                     <td :title="mostOpenTitle(link)">
                       {{ mostOpenType(link) }}
                       <span v-if="!mostOpen.size && link.topCellType" class="muted">*</span>
@@ -685,6 +685,15 @@ function downloadCsv() {
   a.download = `${selectedGene.value || "linked"}_linked_peaks.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// z-score isn't a column (p comes from it); it's in the r and p tooltips and the CSV
+function statsTitle(link) {
+  const parts = [`r = ${link.correlation?.toFixed(3) ?? "—"}`, `p = ${formatPValue(link.pValue)}`];
+  if (link.zscore != null) {
+    parts.push(`z = ${link.zscore.toFixed(2)} (correlation compared with background peaks)`);
+  }
+  return parts.join("\n");
 }
 
 function zoomTo(link) {
