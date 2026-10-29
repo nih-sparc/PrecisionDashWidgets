@@ -125,8 +125,8 @@
           <div v-if="message" class="plot-message">{{ message }}</div>
           <div v-if="view" class="region-label">
             <strong>{{ view.gene.name }}</strong>
+            <span class="strand-note">({{ strandNote(view.gene) }})</span>
             {{ view.chrom }}:{{ formatBp(view.start) }}–{{ formatBp(view.end) }}
-            ({{ view.gene.strand === "-" ? "minus" : "plus" }} strand)
             <span v-if="available.links && highlightLinks" class="link-summary">· {{ linkSummary }}</span>
           </div>
           <div class="svg-scroll">
@@ -208,9 +208,10 @@ const GROUP_OPTIONS = [
 
 const TRACK_HEIGHT = 34;
 const TRACK_GAP = 4;
-const GENE_LANE_HEIGHT = 34;
+const GENE_LANE_HEIGHT = 50;
 const LINK_ROW_HEIGHT = 70;
-const MARGIN = { top: 34, right: 20, bottom: 12, left: 190 };
+// Top margin holds the upstream/downstream labels and the axis
+const MARGIN = { top: 54, right: 20, bottom: 12, left: 190 };
 // The target gene and focused peak use the theme's primary color (--pdw-primary), read
 // at draw time: SVG fill/stroke attributes can't reference CSS variables
 const DEFAULT_ACCENT = "#667eea";
@@ -506,6 +507,8 @@ function draw() {
     )
     .call((axis) => axis.selectAll("text").attr("font-size", 14));
 
+  drawDirectionLabels(svg, width, v);
+
   // Band behind the tracks for the hovered link (drawn on hover, under everything else)
   const hoverBand = svg.append("g").attr("class", "hover-band");
   const showBand = (l) => {
@@ -571,10 +574,56 @@ function assignLanes(genes, x, targetName) {
   return lanes;
 }
 
+// The axis isn't flipped for minus-strand genes, so say which side is upstream of the gene
+function drawDirectionLabels(svg, width, v) {
+  const minus = v.gene.strand === "-";
+  const g = svg.append("g").attr("class", "direction");
+  g.append("title").text(
+    `Relative to ${v.gene.name}, which is transcribed ${minus ? "right to left" : "left to right"}`
+  );
+  [
+    [MARGIN.left, "start", minus ? "← downstream" : "← upstream"],
+    [width - MARGIN.right, "end", minus ? "upstream →" : "downstream →"],
+  ].forEach(([x, anchor, text]) =>
+    g
+      .append("text")
+      .attr("x", x)
+      .attr("y", 16)
+      .attr("text-anchor", anchor)
+      .attr("font-size", 14)
+      .attr("fill", "#64748b")
+      .text(text)
+  );
+}
+
+function strandNote(gene) {
+  return gene.strand === "-" ? "− strand, reads right to left" : "+ strand, reads left to right";
+}
+
+// Bent arrow at the TSS pointing the way the gene is transcribed
+function drawTssArrow(g, gene, x, mid, color, v) {
+  const tss = geneTss(gene);
+  if (tss < v.start || tss > v.end) return;
+  const dir = gene.strand === "-" ? -1 : 1;
+  const x0 = x(tss);
+  const top = mid - 20;
+  const tip = x0 + 16 * dir;
+  g.append("path")
+    .attr("d", `M${x0},${mid - 8} V${top} H${tip}`)
+    .attr("fill", "none")
+    .attr("stroke", color)
+    .attr("stroke-width", 2);
+  g.append("path")
+    .attr("d", `M${tip},${top - 5} L${tip + 7 * dir},${top} L${tip},${top + 5} Z`)
+    .attr("fill", color);
+  g.append("title").text(`${gene.name} TSS (transcription start), ${gene.chrom}:${formatBp(tss)}`);
+}
+
 function drawGeneModel(svg, lanes, x, clampX, v) {
   const g = svg.append("g").attr("class", "gene-model");
   lanes.forEach((lane, i) => {
-    const mid = MARGIN.top + i * GENE_LANE_HEIGHT + GENE_LANE_HEIGHT / 2 + 2;
+    // Room above the gene for the TSS arrow
+    const mid = MARGIN.top + i * GENE_LANE_HEIGHT + 24;
     for (const gene of lane) {
       const isTarget = gene.name === v.gene.name;
       const color = isTarget ? accentColor : OTHER_GENE_COLOR;
@@ -615,6 +664,8 @@ function drawGeneModel(svg, lanes, x, clampX, v) {
         .attr("height", 12)
         .attr("fill", color);
 
+      if (isTarget) drawTssArrow(geneG, gene, x, mid, color, v);
+
       // Label to the left of the gene, or inside the view if it starts off-screen
       const labelX = Math.max(MARGIN.left + 2, x(gene.start) - 6);
       geneG
@@ -632,7 +683,7 @@ function drawGeneModel(svg, lanes, x, clampX, v) {
   svg
     .append("text")
     .attr("x", MARGIN.left - 10)
-    .attr("y", MARGIN.top + GENE_LANE_HEIGHT / 2 + 6)
+    .attr("y", MARGIN.top + 24 + 5)
     .attr("text-anchor", "end")
     .attr("font-size", 14)
     .attr("font-weight", 600)
@@ -1144,6 +1195,11 @@ function formatSignal(value) {
 
 .link-summary {
   color: var(--pdw-text-muted);
+}
+
+.strand-note {
+  margin-right: 6px;
+  color: var(--pdw-text);
 }
 
 .region-label strong {
