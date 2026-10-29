@@ -103,6 +103,15 @@
               >Calc</span>
             </label>
 
+            <label class="label" title="Which cell types' tracks come first">
+              Order:
+              <select v-model="trackOrder" class="select">
+                <option v-for="opt in ORDER_OPTIONS" :key="opt.value" :value="opt.value" :title="opt.title">
+                  {{ opt.label }}
+                </option>
+              </select>
+            </label>
+
             <SegmentedToggle v-model="trackScale" aria-label="Track scale" :options="SCALE_OPTIONS" />
             <SegmentedToggle v-model="trackHeight" aria-label="Track height" :options="HEIGHT_OPTIONS" />
 
@@ -149,9 +158,13 @@
                 thicker arc = larger |r|
               </span>
               <span class="legend-sep">·</span>
+              <span title="Peaks not linked to this gene are drawn lighter">faded bars: not linked</span>
+              <span class="legend-sep">·</span>
             </template>
             <span>{{ scaleNote }}</span>
           </div>
+          <!-- Axis, genes and links stay in view while the tracks scroll -->
+          <svg ref="headSvg" class="plot-svg"></svg>
           <div class="svg-scroll">
             <svg ref="plotSvg" class="plot-svg"></svg>
           </div>
@@ -254,9 +267,16 @@ const HEIGHT_OPTIONS = [
 ];
 const SCALE_OPTIONS = [
   {
+    key: "links",
+    label: "Fit links",
+    title:
+      "One scale for all tracks, fitted to the linked peaks shown. Taller peaks elsewhere are " +
+      "cut off (marked with a dark cap).",
+  },
+  {
     key: "shared",
-    label: "Shared scale",
-    title: "One scale for all tracks: best for comparing cell types",
+    label: "Fit all",
+    title: "One scale for all tracks, fitted to the tallest peak in view",
   },
   {
     key: "track",
@@ -265,6 +285,18 @@ const SCALE_OPTIONS = [
   },
 ];
 const groupChoices = GROUP_OPTIONS.filter((o) => o.available).length;
+const ORDER_OPTIONS = [
+  {
+    value: "links",
+    label: "Most open at links",
+    title: "Cell types with the most signal at the linked peaks shown come first",
+  },
+  { value: "signal", label: "Most signal in view", title: "By each cell type's highest peak in view" },
+  { value: "alpha", label: "A–Z", title: "Alphabetical" },
+];
+// Arcs to peaks (or a TSS) outside the view are drawn this far past the plot edge and
+// fade out toward that edge, so they read as "continues off screen"
+const OFFSCREEN_REACH = 40;
 // "Zoom to peak" shows this much on each side of the peak's center
 const ZOOM_FLANK = 5000;
 const TIP_WIDTH = 290;
@@ -284,9 +316,12 @@ let accentColor = DEFAULT_ACCENT;
 const OTHER_GENE_COLOR = "#94a3b8";
 // Unique ids for SVG clip paths when several chromatin views are on a page
 let instanceCount = 0;
-const clipId = `chromatin-links-clip-${++instanceCount}`;
+const instanceId = ++instanceCount;
+const clipId = `chromatin-links-clip-${instanceId}`;
+const fadeId = `chromatin-links-fade-${instanceId}`;
 
 const plotSvg = ref(null);
+const headSvg = ref(null);
 const plotContainer = ref(null);
 const manager = shallowRef(null);
 
@@ -317,7 +352,8 @@ const signalMode = ref("rpm");
 const currentSignal = computed(() => SIGNAL_MODES.find((m) => m.key === signalMode.value));
 // Track scale, shown in the legend line (set when the tracks are drawn)
 const scaleNote = ref("");
-const trackScale = ref("shared");
+const trackScale = ref("links");
+const trackOrder = ref("links");
 const trackHeight = ref(HEIGHT_OPTIONS[0].key);
 // Mirrors the zoom prop, so zooming also works without the store
 const zoomPeak = shallowRef(props.zoom);
@@ -401,7 +437,9 @@ watch(flank, () => {
   else if (view.value) runWhenActive(loadRegion);
 });
 
-watch([signalMode, highlightLinks, groupBy, trackScale, trackHeight], () => runWhenActive(draw));
+watch([signalMode, highlightLinks, groupBy, trackScale, trackHeight, trackOrder], () =>
+  runWhenActive(draw)
+);
 
 async function initWithViewer(viewerInstance) {
   try {
@@ -552,16 +590,20 @@ function signalValue(d) {
 
 function draw() {
   const svgEl = plotSvg.value;
-  if (!svgEl) return;
+  const headEl = headSvg.value;
+  if (!svgEl || !headEl) return;
   accentColor = getComputedStyle(svgEl).getPropertyValue("--pdw-primary").trim() || DEFAULT_ACCENT;
   const svg = d3.select(svgEl);
+  const head = d3.select(headEl);
   svg.selectAll("*").remove();
+  head.selectAll("*").remove();
   // The hovered element is gone, so its mouseleave will never fire
   hideTip();
 
   const v = view.value;
   if (!v) {
     svg.attr("height", 0);
+    head.attr("height", 0);
     return;
   }
 
@@ -573,22 +615,23 @@ function draw() {
     .range([MARGIN.left, width - MARGIN.right]);
   const clampX = (pos) => Math.max(MARGIN.left, Math.min(width - MARGIN.right, x(pos)));
 
+  // Header: axis, genes and links
   const lanes = assignLanes(v.genes, clampX, v.gene.name);
   const geneRowHeight = laneTop(Math.max(1, lanes.length)) - MARGIN.top;
   const showLinks = highlightLinks.value && available.value.links;
-  // Links sit right under the genes, so they're visible without scrolling past the tracks
   const linkRowTop = MARGIN.top + geneRowHeight + 4;
-  const tracksTop = linkRowTop + (showLinks ? LINK_ROW_HEIGHT : 0) + 8;
-  const tracksHeight = groups.value.length * (trackHeight.value + TRACK_GAP);
-  const tracksBottom = tracksTop + tracksHeight;
-  const height = tracksBottom + MARGIN.bottom;
+  const headHeight = linkRowTop + (showLinks ? LINK_ROW_HEIGHT : 0) + 4;
+  head.attr("width", width).attr("height", headHeight);
 
-  svg.attr("width", width).attr("height", height);
+  // Tracks, in their own scrolling svg
+  const order = orderGroups(v);
+  const tracksTop = 4;
+  const tracksBottom = tracksTop + order.length * (trackHeight.value + TRACK_GAP);
+  svg.attr("width", width).attr("height", tracksBottom + MARGIN.bottom);
 
-  // Genomic axis
   const span = v.end - v.start;
   const decimals = span < 20000 ? 3 : 2;
-  svg
+  head
     .append("g")
     .attr("class", "axis")
     .attr("transform", `translate(0,${MARGIN.top - 6})`)
@@ -600,36 +643,61 @@ function draw() {
     )
     .call((axis) => axis.selectAll("text").attr("font-size", 14));
 
-  drawDirectionLabels(svg, width, v);
+  drawDirectionLabels(head, width, v);
 
-  // Band behind the tracks for the hovered link (drawn on hover, under everything else)
-  const hoverBand = svg.append("g").attr("class", "hover-band");
+  // Band through genes, links and tracks for the hovered link, under everything else
+  const bands = [
+    [head.append("g").attr("class", "hover-band"), MARGIN.top, headHeight],
+    [svg.append("g").attr("class", "hover-band"), 0, tracksBottom],
+  ];
   const showBand = (l) => {
-    hoverBand.selectAll("*").remove();
-    if (!l || l.end < v.start || l.start > v.end) return;
-    hoverBand
-      .append("rect")
-      .attr("x", clampX(l.start) - 2)
-      .attr("width", Math.max(4, clampX(l.end) - clampX(l.start) + 4))
-      .attr("y", MARGIN.top)
-      .attr("height", tracksBottom - MARGIN.top)
-      .attr("fill", linkColor(l))
-      .attr("opacity", 0.18);
+    for (const [layer, top, bottom] of bands) {
+      layer.selectAll("*").remove();
+      if (!l || l.end < v.start || l.start > v.end) continue;
+      layer
+        .append("rect")
+        .attr("x", clampX(l.start) - 2)
+        .attr("width", Math.max(4, clampX(l.end) - clampX(l.start) + 4))
+        .attr("y", top)
+        .attr("height", bottom - top)
+        .attr("fill", linkColor(l))
+        .attr("opacity", 0.18);
+    }
   };
 
-  drawFocus(svg, x, clampX, tracksBottom, v);
-  drawGeneModel(svg, lanes, x, clampX, v);
-  drawTracks(svg, x, tracksTop, width, v);
-  drawHoverGuide(svg, x, tracksTop, tracksBottom, width, v);
+  drawFocus(head, clampX, MARGIN.top, headHeight, v);
+  drawFocus(svg, clampX, 0, tracksBottom, v);
+  drawGeneModel(head, lanes, x, clampX, v);
+  drawTracks(svg, x, tracksTop, width, v, order);
+  drawHoverGuide(svg, x, tracksTop, tracksBottom, width, v, order);
   // Zoomed in, arcs of other peaks would only cross the view as flat lines
   const arcLinks = v.zoomed
     ? shownLinks.value.filter((l) => l.end >= v.start && l.start <= v.end)
     : shownLinks.value;
-  if (showLinks) drawLinkArcs(svg, x, linkRowTop, width, v, arcLinks, showBand);
+  if (showLinks) drawLinkArcs(head, x, linkRowTop, width, v, arcLinks, showBand);
+}
+
+// Track order: by signal at the linked peaks shown (the cell types the links are about),
+// by the highest peak in view, or alphabetical. Ties fall back to alphabetical.
+function orderGroups(v) {
+  const alpha = groups.value;
+  if (trackOrder.value === "alpha") return alpha;
+  const score = new Map(alpha.map((g) => [g, 0]));
+  if (trackOrder.value === "links" && shownLinks.value.length) {
+    const linked = new Set(shownLinks.value.map((l) => `${l.start}-${l.end}`));
+    for (const d of v.signal) {
+      if (linked.has(`${d.start}-${d.end}`)) score.set(d.group, score.get(d.group) + signalValue(d));
+    }
+  }
+  // No links (or none in view): fall back to the highest peak in view
+  if (![...score.values()].some((s) => s > 0)) {
+    for (const d of v.signal) score.set(d.group, Math.max(score.get(d.group) ?? 0, signalValue(d)));
+  }
+  return [...alpha].sort((a, b) => score.get(b) - score.get(a));
 }
 
 // Outline the selected linked peak
-function drawFocus(svg, x, clampX, bottom, v) {
+function drawFocus(svg, clampX, top, bottom, v) {
   const f = focusForGene(v.gene);
   if (!f || f.end < v.start || f.start > v.end) return;
   const x1 = clampX(f.start) - 3;
@@ -638,8 +706,8 @@ function drawFocus(svg, x, clampX, bottom, v) {
   g.append("rect")
     .attr("x", x1)
     .attr("width", width)
-    .attr("y", MARGIN.top)
-    .attr("height", bottom - MARGIN.top)
+    .attr("y", top)
+    .attr("height", bottom - top)
     .attr("fill", accentColor)
     .attr("fill-opacity", 0.08)
     .attr("stroke", accentColor)
@@ -859,18 +927,29 @@ function geneTipLines(gene) {
   ];
 }
 
-function drawTracks(svg, x, top, width, v) {
+function drawTracks(svg, x, top, width, v, order) {
   const height = trackHeight.value;
   const byGroup = d3.group(v.signal, (d) => d.group);
-  const yMax = d3.max(v.signal, signalValue) || 1;
   const perTrack = trackScale.value === "track";
+  const allMax = d3.max(v.signal, signalValue) || 1;
+  // "Fit links": the tallest signal at a linked peak in view, so the linked peaks fill the
+  // tracks instead of being dwarfed by unlinked ones (which are cut off and capped)
+  const linked = new Set(shownLinks.value.map((l) => `${l.start}-${l.end}`));
+  const linksMax = d3.max(
+    v.signal.filter((d) => linked.has(`${d.start}-${d.end}`)),
+    signalValue
+  );
+  const fitLinks = trackScale.value === "links" && linksMax > 0;
+  const showingLinks = highlightLinks.value && available.value.links && linked.size > 0;
+  const yMax = fitLinks ? linksMax : allMax;
+  // Colors follow the cell type, not its position, so reordering keeps them
   const color = d3.scaleOrdinal(d3.schemeTableau10).domain(groups.value);
   const unit = SIGNAL_MODES.find((m) => m.key === signalMode.value).unit;
 
   // Row backgrounds go underneath everything so link and focus highlights stay visible
   const backgrounds = svg.insert("g", ":first-child").attr("class", "track-backgrounds");
   const g = svg.append("g").attr("class", "tracks");
-  groups.value.forEach((group, i) => {
+  order.forEach((group, i) => {
     const trackTop = top + i * (height + TRACK_GAP);
     const baseline = trackTop + height;
     const row = g.append("g");
@@ -916,9 +995,25 @@ function drawTracks(svg, x, top, width, v) {
       .attr("class", "peak")
       .attr("x", (d) => x(Math.max(d.start, v.start)))
       .attr("width", (d) => Math.max(1.5, x(Math.min(d.end, v.end)) - x(Math.max(d.start, v.start))))
-      .attr("y", (d) => baseline - y(signalValue(d)))
-      .attr("height", (d) => Math.max(0.5, y(signalValue(d))))
-      .attr("fill", color(group));
+      .attr("y", (d) => baseline - Math.min(height - 4, y(signalValue(d))))
+      .attr("height", (d) => Math.max(0.5, Math.min(height - 4, y(signalValue(d)))))
+      .attr("fill", color(group))
+      // With links on, peaks that aren't linked to the gene are faded so the linked ones stand out
+      .attr("opacity", (d) => (!showingLinks || linked.has(`${d.start}-${d.end}`) ? 1 : 0.35));
+
+    // Peaks taller than the scale are cut off; a dark cap says so
+    if (fitLinks) {
+      row
+        .selectAll("rect.clipped")
+        .data(peaks.filter((d) => signalValue(d) > yMax))
+        .join("rect")
+        .attr("class", "clipped")
+        .attr("x", (d) => x(Math.max(d.start, v.start)))
+        .attr("width", (d) => Math.max(1.5, x(Math.min(d.end, v.end)) - x(Math.max(d.start, v.start))))
+        .attr("y", baseline - (height - 4) - 1)
+        .attr("height", 3)
+        .attr("fill", "#1e293b");
+    }
 
     // Per-track scales differ, so each track says what its full height means
     if (perTrack) {
@@ -936,13 +1031,16 @@ function drawTracks(svg, x, top, width, v) {
     }
   });
 
-  scaleNote.value = perTrack
-    ? `Tracks: each scaled to its own max (${unit})`
-    : `Tracks: 0–${formatSignal(yMax)} ${unit}, same scale for all`;
+  if (perTrack) scaleNote.value = `Tracks: each scaled to its own max (${unit})`;
+  else if (fitLinks) {
+    scaleNote.value =
+      `Tracks: 0–${formatSignal(yMax)} ${unit}, fitted to the linked peaks` +
+      (allMax > yMax ? ` (taller peaks, up to ${formatSignal(allMax)}, are cut off at a dark cap)` : "");
+  } else scaleNote.value = `Tracks: 0–${formatSignal(yMax)} ${unit}, same scale for all`;
 }
 
 // Vertical guide across the tracks; the hover card lists every track's value there
-function drawHoverGuide(svg, x, top, bottom, width, v) {
+function drawHoverGuide(svg, x, top, bottom, width, v, order) {
   const left = MARGIN.left;
   const right = width - MARGIN.right;
   const byGroup = d3.group(v.signal, (d) => d.group);
@@ -967,7 +1065,7 @@ function drawHoverGuide(svg, x, top, bottom, width, v) {
     guide.attr("x1", mx).attr("x2", mx).style("display", null);
     const lines = [];
     let peak = null;
-    for (const group of groups.value) {
+    for (const group of order) {
       let best = null;
       for (const d of byGroup.get(group) || []) {
         if (d.start - tolerance <= pos && pos <= d.end + tolerance && (!best || d.signal > best.signal)) {
@@ -1041,13 +1139,45 @@ function drawLinkArcs(svg, x, top, width, v, links, showBand) {
     .attr("width", right - left)
     .attr("height", LINK_ROW_HEIGHT);
 
-  const arcPath = (l) => {
-    // Peaks at the TSS (promoters) still get a small visible arc
-    const dx = x(linkMid(l)) - tssX;
-    const x2 = tssX + (Math.abs(dx) < MIN_ARC_WIDTH ? Math.sign(dx || 1) * MIN_ARC_WIDTH : dx);
-    const h = Math.min(LINK_ROW_HEIGHT - 16, 8 + Math.abs(x2 - tssX) / 3);
-    return `M${tssX},${baseline} Q${(tssX + x2) / 2},${baseline - 2 * h} ${x2},${baseline}`;
+  // An end outside the view (a far peak, or the TSS when zoomed) is pulled in to just past
+  // the edge, so the arc curves down out of view instead of crossing it as a flat line
+  const reach = (px) => Math.max(left - OFFSCREEN_REACH, Math.min(right + OFFSCREEN_REACH, px));
+  const offscreen = (l) => {
+    const px = x(linkMid(l));
+    return px < left || px > right || tssX < left || tssX > right;
   };
+  const arcPath = (l) => {
+    const x1 = reach(tssX);
+    // Peaks at the TSS (promoters) still get a small visible arc
+    const dx = reach(x(linkMid(l))) - x1;
+    const x2 = x1 + (Math.abs(dx) < MIN_ARC_WIDTH ? Math.sign(dx || 1) * MIN_ARC_WIDTH : dx);
+    const h = Math.min(LINK_ROW_HEIGHT - 16, 8 + Math.abs(x2 - x1) / 3);
+    return `M${x1},${baseline} Q${(x1 + x2) / 2},${baseline - 2 * h} ${x2},${baseline}`;
+  };
+
+  // Off-screen arcs fade from their on-screen end to the plot edge, reading as a trail
+  // toward the "N more" / TSS marker rather than a line across the view
+  const defs = g.append("defs");
+  const fadeStroke = (l, color, i) => {
+    if (!offscreen(l)) return color;
+    const px = x(linkMid(l));
+    const peakOut = px < left || px > right;
+    const from = peakOut ? tssX : px; // the end that's in view
+    const to = (peakOut ? px : tssX) < left ? left : right;
+    const id = `${fadeId}-${i}`;
+    const grad = defs
+      .append("linearGradient")
+      .attr("id", id)
+      .attr("gradientUnits", "userSpaceOnUse")
+      .attr("x1", from)
+      .attr("x2", to)
+      .attr("y1", 0)
+      .attr("y2", 0);
+    grad.append("stop").attr("offset", 0).attr("stop-color", color).attr("stop-opacity", 1);
+    grad.append("stop").attr("offset", 1).attr("stop-color", color).attr("stop-opacity", 0);
+    return `url(#${id})`;
+  };
+
   // Strongest on top, the selected link above all
   const selected = links.find((l) => isFocused(v, l));
   const ordered = [...links].sort(
@@ -1060,7 +1190,7 @@ function drawLinkArcs(svg, x, top, width, v, links, showBand) {
       .append("path")
       .attr("d", arcPath(selected))
       .attr("fill", "none")
-      .attr("stroke", accentColor)
+      .attr("stroke", fadeStroke(selected, accentColor, "selected"))
       .attr("stroke-width", arcWidth(selected) + 5)
       .attr("opacity", 0.35);
   }
@@ -1072,7 +1202,7 @@ function drawLinkArcs(svg, x, top, width, v, links, showBand) {
     .join("path")
     .attr("d", arcPath)
     .attr("fill", "none")
-    .attr("stroke", linkColor)
+    .attr("stroke", (l, i) => fadeStroke(l, linkColor(l), i))
     .attr("stroke-width", arcWidth)
     .attr("opacity", (l) => (l === selected ? 1 : 0.35 + 0.65 * correlationStrength(l.correlation)));
 
@@ -1517,6 +1647,7 @@ function formatBp(value) {
 
 .plot-svg {
   display: block;
+  flex-shrink: 0;
 }
 
 .calc-badge {

@@ -296,7 +296,7 @@
               <span class="chevron">{{ showAbout ? "▾" : "▸" }}</span>
             </button>
             <span v-if="anyComputed" class="calc-key" :title="methodNote">
-              <span class="calc">Purple</span> = calculated by the data processor
+              <span class="calc">Purple</span> = calculated, not in the submitted data (hover for how)
             </span>
             <button
               type="button"
@@ -326,13 +326,20 @@
               controls the gene; links can also reflect differences between cell types.
             </p>
             <p>{{ MISSING_LINK_NOTE }}</p>
+            <p>
+              Strong peaks without an arc are common. A peak can be linked to a neighboring gene
+              instead (use Find position to see which), or its accessibility may simply not rise
+              and fall with this gene's expression, for example when it's open in most cells
+              regardless of how much of the gene they make.
+            </p>
           </div>
 
           <p v-if="showAbout" class="footnote">
             <template v-if="prov.known">
               {{ methodNote }}
               <span v-if="anyComputed">
-                Column names in <span class="calc">purple</span> were calculated; hover one to see how.
+                Column names in <span class="calc">purple</span> are calculated (by the data processor
+                or in the dashboard), not taken from the submitted data; hover one to see how.
               </span>
             </template>
             <template v-else>
