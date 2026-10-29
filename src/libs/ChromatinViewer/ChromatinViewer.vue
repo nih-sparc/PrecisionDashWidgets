@@ -208,7 +208,7 @@ const GROUP_OPTIONS = [
 
 const TRACK_HEIGHT = 34;
 const TRACK_GAP = 4;
-const GENE_LANE_HEIGHT = 50;
+const GENE_LANE_HEIGHT = 56;
 const LINK_ROW_HEIGHT = 70;
 const MIN_ARC_WIDTH = 8;
 // Top margin holds the upstream/downstream labels and the axis
@@ -481,7 +481,7 @@ function draw() {
     .range([MARGIN.left, width - MARGIN.right]);
   const clampX = (pos) => Math.max(MARGIN.left, Math.min(width - MARGIN.right, x(pos)));
 
-  const lanes = assignLanes(v.genes, x, v.gene.name);
+  const lanes = assignLanes(v.genes, clampX, v.gene.name);
   const geneRowHeight = Math.max(1, lanes.length) * GENE_LANE_HEIGHT;
   const showLinks = highlightLinks.value && available.value.links;
   // Links sit right under the genes, so they're visible without scrolling past the tracks
@@ -552,16 +552,19 @@ function drawFocus(svg, x, clampX, bottom, v) {
 }
 
 // Greedy packing so overlapping genes (and their labels) get separate rows
-function assignLanes(genes, x, targetName) {
+function assignLanes(genes, clampX, targetName) {
   const sorted = [...genes].sort((a, b) =>
     a.name === targetName ? -1 : b.name === targetName ? 1 : a.start - b.start
   );
   const laneEnds = [];
   const lanes = [];
   for (const gene of sorted) {
-    // The label sits left of the gene start
-    const left = x(gene.start) - 8 - gene.name.length * 7;
-    const right = x(gene.end) + 6;
+    // The label is centered under the visible part of the gene
+    const x1 = clampX(gene.start);
+    const x2 = clampX(gene.end);
+    const half = labelWidth(gene.name) / 2;
+    const left = Math.min(x1, (x1 + x2) / 2 - half) - 6;
+    const right = Math.max(x2, (x1 + x2) / 2 + half) + 6;
     let lane = laneEnds.findIndex((laneEnd) => left > laneEnd);
     if (lane === -1) {
       lane = laneEnds.length;
@@ -573,6 +576,11 @@ function assignLanes(genes, x, targetName) {
     lanes[lane].push(gene);
   }
   return lanes;
+}
+
+// Rough width of a 14px label, for lane packing
+function labelWidth(text) {
+  return text.length * 8;
 }
 
 // The axis isn't flipped for minus-strand genes, so say which side is upstream of the gene
@@ -602,9 +610,10 @@ function strandNote(gene) {
 }
 
 // Bent arrow at the TSS pointing the way the gene is transcribed
-function drawTssArrow(g, gene, x, mid, color, v) {
+function drawTssArrow(parent, gene, x, mid, color, v) {
   const tss = geneTss(gene);
   if (tss < v.start || tss > v.end) return;
+  const g = parent.append("g").attr("class", "tss-arrow");
   const dir = gene.strand === "-" ? -1 : 1;
   const x0 = x(tss);
   const top = mid - 20;
@@ -623,7 +632,7 @@ function drawTssArrow(g, gene, x, mid, color, v) {
 function drawGeneModel(svg, lanes, x, clampX, v) {
   const g = svg.append("g").attr("class", "gene-model");
   lanes.forEach((lane, i) => {
-    // Room above the gene for the TSS arrow
+    // Room above the gene for the TSS arrow, below it for the label
     const mid = MARGIN.top + i * GENE_LANE_HEIGHT + 24;
     for (const gene of lane) {
       const isTarget = gene.name === v.gene.name;
@@ -631,11 +640,9 @@ function drawGeneModel(svg, lanes, x, clampX, v) {
       const x1 = clampX(gene.start);
       const x2 = clampX(gene.end);
       const geneG = g.append("g");
-      geneG.append("title").text(
-        `${gene.name} (${gene.strand} strand)\n${gene.chrom}:${formatBp(gene.start)}–${formatBp(gene.end)}\n${gene.exons.length} exon${gene.exons.length === 1 ? "" : "s"}`
-      );
+      const dir = gene.strand === "-" ? -1 : 1;
 
-      // Intron line with strand chevrons
+      // Intron line, with a wide invisible copy for hovering
       geneG
         .append("line")
         .attr("x1", x1)
@@ -644,36 +651,63 @@ function drawGeneModel(svg, lanes, x, clampX, v) {
         .attr("y2", mid)
         .attr("stroke", color)
         .attr("stroke-width", 1.5);
-      const dir = gene.strand === "-" ? -1 : 1;
-      for (let cx = x1 + 12; cx < x2 - 6; cx += 40) {
+
+      // Strand chevrons along the introns (exons are drawn over them)
+      for (let cx = x1 + 14; cx < x2 - 8; cx += 28) {
         geneG
           .append("path")
-          .attr("d", `M${cx - 3 * dir},${mid - 3} L${cx},${mid} L${cx - 3 * dir},${mid + 3}`)
+          .attr("d", `M${cx - 5 * dir},${mid - 5} L${cx},${mid} L${cx - 5 * dir},${mid + 5}`)
           .attr("fill", "none")
           .attr("stroke", color)
-          .attr("stroke-width", 1.2);
+          .attr("stroke-width", 1.8);
       }
 
-      // Exons
+      geneG
+        .append("line")
+        .attr("x1", x1)
+        .attr("x2", x2)
+        .attr("y1", mid)
+        .attr("y2", mid)
+        .attr("stroke", "transparent")
+        .attr("stroke-width", 14)
+        .on("mouseenter", (event) => showTip(event, gene.name, geneTipLines(gene)))
+        .on("mousemove", moveTip)
+        .on("mouseleave", hideTipSoon);
+
+      // Exons, much taller than the intron line. Numbered in transcription order, so on
+      // the minus strand exon 1 is the rightmost.
+      const total = gene.exons.length;
       geneG
         .selectAll("rect")
-        .data(gene.exons.filter(([s, e]) => e >= v.start && s <= v.end))
+        .data(
+          gene.exons
+            .map(([start, end], idx) => ({ start, end, number: dir === 1 ? idx + 1 : total - idx }))
+            .filter((e) => e.end >= v.start && e.start <= v.end)
+        )
         .join("rect")
-        .attr("x", ([s]) => clampX(s))
-        .attr("width", ([s, e]) => Math.max(1.5, clampX(e) - clampX(s)))
-        .attr("y", mid - 6)
-        .attr("height", 12)
-        .attr("fill", color);
+        .attr("x", (e) => clampX(e.start))
+        .attr("width", (e) => Math.max(2, clampX(e.end) - clampX(e.start)))
+        .attr("y", mid - 8)
+        .attr("height", 16)
+        .attr("fill", color)
+        .on("mouseenter", (event, e) =>
+          showTip(event, gene.name, [
+            `Exon ${e.number} of ${total} (merged across all transcripts)`,
+            `${gene.chrom}:${formatBp(e.start)}–${formatBp(e.end)}`,
+            `${formatBp(e.end - e.start + 1)} bp`,
+          ])
+        )
+        .on("mousemove", moveTip)
+        .on("mouseleave", hideTipSoon);
 
       if (isTarget) drawTssArrow(geneG, gene, x, mid, color, v);
 
-      // Label to the left of the gene, or inside the view if it starts off-screen
-      const labelX = Math.max(MARGIN.left + 2, x(gene.start) - 6);
+      // Label centered under the visible part of the gene
       geneG
         .append("text")
-        .attr("x", labelX)
-        .attr("y", mid - 9)
-        .attr("text-anchor", labelX === MARGIN.left + 2 ? "start" : "end")
+        .attr("x", (x1 + x2) / 2)
+        .attr("y", mid + 26)
+        .attr("text-anchor", "middle")
         .attr("font-size", 14)
         .attr("font-weight", isTarget ? 700 : 400)
         .attr("fill", isTarget ? accentColor : "#475569")
@@ -690,6 +724,14 @@ function drawGeneModel(svg, lanes, x, clampX, v) {
     .attr("font-weight", 600)
     .attr("fill", "#1a202c")
     .text("Genes");
+}
+
+function geneTipLines(gene) {
+  return [
+    strandNote(gene),
+    `${gene.chrom}:${formatBp(gene.start)}–${formatBp(gene.end)}`,
+    `${gene.exons.length} exon${gene.exons.length === 1 ? "" : "s"} (merged across all transcripts)`,
+  ];
 }
 
 function drawTracks(svg, x, top, width, v) {
