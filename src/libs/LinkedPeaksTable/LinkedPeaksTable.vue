@@ -279,6 +279,7 @@
               A link shows that accessibility and expression go together, not that the region
               controls the gene; links can also reflect differences between cell types.
             </p>
+            <p>{{ MISSING_LINK_NOTE }}</p>
           </div>
 
           <button
@@ -335,6 +336,9 @@ import {
   formatPValue,
 } from "./linkedPeaks.js";
 import { mostOpenByPeak, peakKey, formatSignal } from "../shared/chromatinSignal.js";
+
+const MISSING_LINK_NOTE =
+  "A missing link doesn't mean a region isn't regulatory; weak or cell-type-specific relationships often don't reach significance across all cells.";
 
 const TRACKS_FILE = "chromatin_tracks.parquet";
 
@@ -519,7 +523,11 @@ async function loadLinks() {
     updateMostOpen();
     // Keep the slider in range for the new gene
     if (minAbsCorrelation.value > correlationMax.value) minAbsCorrelation.value = 0;
-    if (!result.length) message.value = noLinksMessage(selectedGene.value);
+    if (!result.length) {
+      const gene = selectedGene.value;
+      const status = await manager.value.getLinkTestStatus(gene).catch(() => null);
+      if (gene === selectedGene.value) message.value = noLinksMessage(gene, status);
+    }
   } catch (err) {
     console.error("Failed to load links:", err);
     message.value = `Failed to load links: ${err.message}`;
@@ -528,15 +536,30 @@ async function loadLinks() {
   }
 }
 
-// Explain *why* a gene can have no links: computed links only cover the genes that were tested
-function noLinksMessage(gene) {
+// Explain *why* a gene can have no links: either it wasn't tested (links only cover the
+// genes that were), or it was and nothing passed the cutoffs.
+// status: getLinkTestStatus() result, null when the dataset doesn't record tested genes.
+function noLinksMessage(gene, status) {
   const info = prov.value.info;
-  if (info?.source === "computed" && info.gene_selection) {
-    return `No linked peaks for ${gene}. Links were only calculated for ${
-      info.genes_tested != null ? info.genes_tested.toLocaleString() : "a selection of"
-    } genes (${info.gene_selection}), so ${gene} may not have been tested.`;
+  const p = info?.parameters || {};
+  const tested = info?.genes_tested != null ? info.genes_tested.toLocaleString() : "a selection of";
+  const selection = info?.gene_selection ? ` (${info.gene_selection})` : "";
+  if (status?.tested) {
+    const cutoffs = [
+      p.pvalue_cutoff != null && `p < ${p.pvalue_cutoff}`,
+      p.score_cutoff != null && `|r| > ${p.score_cutoff}`,
+    ].filter(Boolean);
+    return `No linked peaks found for ${gene}. It was tested, but no peak passed the cutoffs${
+      cutoffs.length ? ` (${cutoffs.join(", ")})` : ""
+    }. ${MISSING_LINK_NOTE}`;
   }
-  return `No linked peaks for ${gene} in this dataset.`;
+  if (status && !status.tested) {
+    return `No linked peaks for ${gene}: it wasn't among the ${tested} genes tested${selection}, so links weren't calculated for it.`;
+  }
+  if (info?.source === "computed" && info.gene_selection) {
+    return `No linked peaks found for ${gene}. Links were only calculated for ${tested} genes${selection}, so ${gene} may not have been tested. ${MISSING_LINK_NOTE}`;
+  }
+  return `No linked peaks found for ${gene} in this dataset. ${MISSING_LINK_NOTE}`;
 }
 
 // Clicking the selected row again clears the selection

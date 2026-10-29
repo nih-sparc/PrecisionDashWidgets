@@ -739,6 +739,24 @@ export class UMAPGeneViewer {
     }));
   }
 
+  /**
+   * Whether LinkPeaks tested a gene, from link_genes_tested.parquet (gene_name, n_links),
+   * which newer processor runs write. Resolves to { tested, nLinks }, or null when the
+   * dataset doesn't record which genes were tested.
+   */
+  async getLinkTestStatus(geneName) {
+    const loaded = await this._loadChromatinFile("link_genes_tested.parquet", "has_link_genes_tested");
+    if (!loaded) return null;
+    const rows = await this._query(`
+      SELECT n_links FROM "${this._file("link_genes_tested.parquet")}"
+      WHERE UPPER(gene_name) = UPPER(${sqlString(geneName)})
+      LIMIT 1
+    `);
+    return rows.length
+      ? { tested: true, nLinks: toNumberOrNull(rows[0].n_links) }
+      : { tested: false, nLinks: null };
+  }
+
   /** All links for a gene, with every column the file has. */
   async getLinksForGene(geneName) {
     const rows = await this._query(`
