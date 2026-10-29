@@ -105,6 +105,32 @@
               </option>
             </select>
           </label>
+
+          <form class="label" @submit.prevent="lookUpPosition">
+            <span title="Find linked peaks containing a genomic position (hg38), for any gene">
+              Position (hg38):
+            </span>
+            <input
+              v-model="positionQuery"
+              type="text"
+              class="gene-input position-input"
+              placeholder="chr3:38,816,400"
+              aria-label="Genomic position (hg38)"
+            />
+            <button type="submit" class="pdw-btn small-btn" :disabled="!positionQuery.trim()">
+              Find
+            </button>
+          </form>
+
+          <button
+            type="button"
+            class="pdw-btn small-btn"
+            :disabled="!filteredLinks.length"
+            title="The links shown in the table (after filters), with every column"
+            @click="downloadCsv"
+          >
+            Download CSV
+          </button>
         </div>
 
         <!-- Summary + table -->
@@ -112,6 +138,32 @@
           <div v-if="dataLoading" class="loading-overlay">
             <div class="small-spinner"></div>
             <p>Loading links...</p>
+          </div>
+
+          <div v-if="lookup" class="lookup-results">
+            <div class="lookup-head">
+              <strong>{{ lookup.title }}</strong>
+              <button type="button" class="pdw-btn small-btn" @click="lookup = null">Close</button>
+            </div>
+            <p v-if="lookup.message" class="lookup-message">{{ lookup.message }}</p>
+            <ul v-else class="lookup-list">
+              <li v-for="peak in lookup.peaks" :key="peak.key">
+                <span class="mono">{{ peak.chrom }}:{{ peak.start.toLocaleString() }}–{{ peak.end.toLocaleString() }}</span>
+                links to
+                <button
+                  v-for="link in peak.links"
+                  :key="link.gene"
+                  type="button"
+                  class="pdw-btn small-btn gene-link"
+                  :title="`Show ${link.gene}'s links and select this peak`"
+                  @click="goToLink(link)"
+                >
+                  {{ link.gene }} (r = {{ link.correlation?.toFixed(3) ?? "—" }}{{
+                    link.linkType ? `, ${typeLabel(link.linkType)}` : ""
+                  }}, {{ formatDistance(link.distance) }})
+                </button>
+              </li>
+            </ul>
           </div>
 
           <div v-if="message" class="plot-message">{{ message }}</div>
@@ -327,6 +379,8 @@ import {
   linkFilterOptions,
   samePeak,
   hasLinkTypes,
+  parsePosition,
+  linksToCsv,
   filterLinks,
   sortLinks,
   summarizeLinks,
@@ -398,6 +452,9 @@ const direction = filterModel("direction");
 const selectedTypes = filterModel("types");
 const showAbout = ref(false);
 const showExplainer = ref(false);
+const positionQuery = ref("");
+// Position lookup result: { title, message?, peaks: [{ key, chrom, start, end, links }] }
+const lookup = shallowRef(null);
 
 let searchTimeout = null;
 let stopTracksListener = null;
@@ -566,6 +623,68 @@ function noLinksMessage(gene, status) {
 function selectLink(link) {
   if (isSelected(link)) return emit("select-peak", null);
   emit("select-peak", { gene: selectedGene.value, chrom: link.chrom, start: link.start, end: link.end });
+}
+
+async function lookUpPosition() {
+  const pos = parsePosition(positionQuery.value);
+  if (!pos) {
+    lookup.value = {
+      title: `Can't read "${positionQuery.value.trim()}"`,
+      message: "Enter a position like chr3:38,816,400 or a range like chr3:38,816,000-38,817,000 (hg38).",
+      peaks: [],
+    };
+    return;
+  }
+  const where = `${pos.chrom}:${pos.start.toLocaleString()}${
+    pos.end !== pos.start ? `–${pos.end.toLocaleString()}` : ""
+  }`;
+  try {
+    const found = await manager.value.getLinksAtPosition(pos.chrom, pos.start, pos.end);
+    // One entry per peak, listing every gene it links to
+    const peaks = new Map();
+    for (const link of found) {
+      const key = `${link.chrom}-${link.start}-${link.end}`;
+      if (!peaks.has(key)) peaks.set(key, { key, chrom: link.chrom, start: link.start, end: link.end, links: [] });
+      peaks.get(key).links.push(link);
+    }
+    lookup.value = {
+      title: found.length
+        ? `${peaks.size} linked peak${peaks.size === 1 ? "" : "s"} at ${where}`
+        : `No linked peaks at ${where}`,
+      message: found.length
+        ? null
+        : "No linked peak contains this position. Links only cover the genes that were tested, and only peaks that passed the cutoffs.",
+      peaks: [...peaks.values()],
+    };
+  } catch (err) {
+    console.error("Position lookup failed:", err);
+    lookup.value = { title: `Lookup failed: ${err.message}`, peaks: [] };
+  }
+}
+
+// From a lookup result: show that gene's links and select the peak
+async function goToLink(link) {
+  if (link.gene.toUpperCase() !== selectedGene.value.toUpperCase()) {
+    selectedGene.value = link.gene;
+    geneSearch.value = link.gene;
+    await loadLinks();
+  }
+  emit("select-peak", { gene: link.gene, chrom: link.chrom, start: link.start, end: link.end });
+}
+
+// The rows shown (after filters, in table order) with every column of the file, plus the
+// dashboard's depth-normalized "most open in"
+function downloadCsv() {
+  const csv = linksToCsv(visibleLinks.value, [
+    { name: "most_open_in_depth_normalized", value: (l) => mostOpen.value.get(peakKey(l))?.group },
+    { name: "most_open_in_reads_per_million_in_peaks", value: (l) => mostOpen.value.get(peakKey(l))?.rpm },
+  ]);
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${selectedGene.value || "linked"}_linked_peaks.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function zoomTo(link) {
@@ -863,6 +982,50 @@ function corrWidth(r) {
 .links-table tbody tr.selected {
   background: #eef2ff;
   box-shadow: inset 3px 0 0 var(--pdw-primary);
+}
+
+.small-btn {
+  padding: 3px 10px;
+}
+
+.position-input {
+  width: 150px;
+}
+
+.lookup-results {
+  padding: 6px 10px;
+  border: 1px solid var(--pdw-border);
+  border-radius: 2px;
+  background: var(--pdw-surface-muted);
+  font-size: 14px;
+  color: var(--pdw-text);
+  flex-shrink: 0;
+}
+
+.lookup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lookup-message {
+  margin: 4px 0 0;
+  color: var(--pdw-text-muted);
+}
+
+.lookup-list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lookup-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
 }
 
 .row-zoom {

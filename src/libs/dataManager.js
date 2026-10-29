@@ -763,25 +763,45 @@ export class UMAPGeneViewer {
       SELECT * FROM "${this._file("linked_peaks.parquet")}"
       WHERE UPPER(gene_name) = UPPER(${sqlString(geneName)})
     `);
-    return rows.map((r) => ({
-      gene: String(r.gene_name),
-      chrom: String(r.peak_chrom),
-      start: Number(r.peak_start),
-      end: Number(r.peak_end),
-      correlation: toNumberOrNull(r.correlation),
-      zscore: toNumberOrNull(r.zscore),
-      pValue: toNumberOrNull(r.p_value),
-      linkType: r.link_type == null ? null : String(r.link_type),
-      distance: toNumberOrNull(r.distance_to_tss),
-      topCellType: r.top_cell_type == null ? null : String(r.top_cell_type),
-      topCellTypeSignal: toNumberOrNull(r.top_cell_type_signal),
-    }));
+    return rows.map(toLink);
+  }
+
+  /**
+   * Links whose peak overlaps a position or range, for every gene (one peak can link to
+   * several genes). Searches the whole links file, which is already in memory.
+   */
+  async getLinksAtPosition(chrom, start, end = start) {
+    const rows = await this._query(`
+      SELECT * FROM "${this._file("linked_peaks.parquet")}"
+      WHERE peak_chrom IN (${chromVariants(chrom)})
+        AND peak_start <= ${Math.round(end)} AND peak_end >= ${Math.round(start)}
+      ORDER BY peak_start, ABS(correlation) DESC
+    `);
+    return rows.map(toLink);
   }
 
   async _query(sql) {
     const result = await this.conn.query(sql);
     return result.toArray().map((row) => row.toJSON());
   }
+}
+
+// A linked_peaks.parquet row as the views use it; `row` keeps every column for export
+function toLink(r) {
+  return {
+    gene: String(r.gene_name),
+    chrom: String(r.peak_chrom),
+    start: Number(r.peak_start),
+    end: Number(r.peak_end),
+    correlation: toNumberOrNull(r.correlation),
+    zscore: toNumberOrNull(r.zscore),
+    pValue: toNumberOrNull(r.p_value),
+    linkType: r.link_type == null ? null : String(r.link_type),
+    distance: toNumberOrNull(r.distance_to_tss),
+    topCellType: r.top_cell_type == null ? null : String(r.top_cell_type),
+    topCellTypeSignal: toNumberOrNull(r.top_cell_type_signal),
+    row: r,
+  };
 }
 
 function toNumberOrNull(value) {
