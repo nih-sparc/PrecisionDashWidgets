@@ -443,11 +443,13 @@ function draw() {
 
   const lanes = assignLanes(v.genes, x, v.gene.name);
   const geneRowHeight = Math.max(1, lanes.length) * GENE_LANE_HEIGHT;
-  const tracksTop = MARGIN.top + geneRowHeight + 20;
-  const tracksHeight = groups.value.length * (TRACK_HEIGHT + TRACK_GAP);
   const showLinks = highlightLinks.value && available.value.links;
-  const linkRowTop = tracksTop + tracksHeight + 4;
-  const height = linkRowTop + (showLinks ? LINK_ROW_HEIGHT : 0) + MARGIN.bottom;
+  // Links sit right under the genes, so they're visible without scrolling past the tracks
+  const linkRowTop = MARGIN.top + geneRowHeight + 4;
+  const tracksTop = linkRowTop + (showLinks ? LINK_ROW_HEIGHT : 0) + 20;
+  const tracksHeight = groups.value.length * (TRACK_HEIGHT + TRACK_GAP);
+  const tracksBottom = tracksTop + tracksHeight;
+  const height = tracksBottom + MARGIN.bottom;
 
   svg.attr("width", width).attr("height", height);
 
@@ -479,13 +481,13 @@ function draw() {
     .attr("x", (l) => clampX(l.start) - 1.5)
     .attr("width", (l) => Math.max(3, clampX(l.end) - clampX(l.start) + 3))
     .attr("y", MARGIN.top)
-    .attr("height", linkRowTop - MARGIN.top)
+    .attr("height", tracksBottom - MARGIN.top)
     .attr("fill", LINK_COLOR)
     .attr("opacity", (l) => 0.12 + 0.3 * (Math.abs(l.correlation ?? 0) / maxCorr))
     .append("title")
     .text((l) => linkTooltip(v, l));
 
-  drawFocus(svg, x, clampX, linkRowTop, v);
+  drawFocus(svg, x, clampX, tracksBottom, v);
   drawGeneModel(svg, lanes, x, clampX, v);
   drawTracks(svg, x, tracksTop, width, v);
   if (showLinks) drawLinkArcs(svg, x, clampX, linkRowTop, width, v, visibleLinks);
