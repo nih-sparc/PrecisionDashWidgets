@@ -256,6 +256,33 @@
 
           <button
             class="about-toggle"
+            :aria-expanded="showExplainer"
+            @click="showExplainer = !showExplainer"
+          >
+            What is a linked peak?
+            <span class="chevron">{{ showExplainer ? "▾" : "▸" }}</span>
+          </button>
+          <div v-if="showExplainer" class="footnote explainer">
+            <p>
+              A linked peak is a region of open DNA whose accessibility rises and falls with this
+              gene's RNA level across cells. Linked peaks are candidate regulatory elements
+              (promoters, enhancers) for the gene.
+            </p>
+            <p>
+              Correlations are computed across all cells and are typically small
+              (|r| ≈ 0.05–0.2) because single-cell ATAC data is very sparse. Negative links mean
+              the region tends to be more open in cells where the gene is lower. The p-value
+              compares each peak's correlation with that of similar background peaks (matched for
+              GC content, accessibility and length), not a plain correlation test.
+            </p>
+            <p>
+              A link shows that accessibility and expression go together, not that the region
+              controls the gene; links can also reflect differences between cell types.
+            </p>
+          </div>
+
+          <button
+            class="about-toggle"
             :aria-expanded="showAbout"
             :title="prov.known ? methodNote : ''"
             @click="showAbout = !showAbout"
@@ -366,6 +393,7 @@ const minAbsCorrelation = filterModel("minAbsCorrelation");
 const direction = filterModel("direction");
 const selectedTypes = filterModel("types");
 const showAbout = ref(false);
+const showExplainer = ref(false);
 
 let searchTimeout = null;
 let stopTracksListener = null;
@@ -922,6 +950,10 @@ function corrWidth(r) {
 
 .chevron {
   font-size: 14px;
+}
+
+.explainer p {
+  margin: 0 0 6px;
 }
 
 .footnote {

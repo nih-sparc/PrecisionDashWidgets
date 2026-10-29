@@ -20,6 +20,8 @@ export function defaultLinkFilters() {
   return { minAbsCorrelation: 0, direction: "all", types: LINK_TYPES.map((t) => t.value) };
 }
 
+export const PEAK_DEFINITION = "A region of open (accessible) DNA detected in the ATAC data.";
+
 export const MOST_OPEN_TOOLTIP =
   "Cell type with the highest accessibility at this peak. The correlation itself is computed across all cells.";
 
