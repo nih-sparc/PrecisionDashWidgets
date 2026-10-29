@@ -206,11 +206,12 @@ const dashboardOptions = computed(() => {
   const chromatinDash = {
     defaultLayout: [
       {
+        // Full width: wider tracks and arcs; the links table goes underneath
         id: "ChromatinAccessibility-1",
         x: 0,
         y: 0,
-        w: 6,
-        h: 15,
+        w: 12,
+        h: 16,
         componentKey: "ChromatinAccessibility",
         componentName: "Chromatin Accessibility",
         component: RawChromatinAccessibility,
@@ -221,10 +222,10 @@ const dashboardOptions = computed(() => {
       },
       {
         id: "LinkedPeaks-1",
-        x: 6,
-        y: 0,
-        w: 6,
-        h: 15,
+        x: 0,
+        y: 16,
+        w: 12,
+        h: 10,
         componentKey: "LinkedPeaks",
         componentName: "Linked Peaks",
         component: RawLinkedPeaks,
