@@ -1015,7 +1015,9 @@ function corrWidth(r) {
   color: var(--pdw-primary);
 }
 
+/* Set on cells too: host pages often size td/th themselves */
 .links-table td {
+  font-size: 14px;
   padding: 4px 6px;
   border-bottom: 1px solid #f1f5f9;
   white-space: nowrap;

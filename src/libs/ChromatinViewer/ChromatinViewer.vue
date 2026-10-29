@@ -84,7 +84,7 @@
           </div>
 
           <div class="control-row">
-            <label class="label inline" :title="currentSignal.title">
+            <label class="label" :title="currentSignal.title">
               <span class="label-text">
                 Signal:
                 <span
