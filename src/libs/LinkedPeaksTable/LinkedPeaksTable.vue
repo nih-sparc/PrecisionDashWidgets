@@ -210,7 +210,17 @@
                     @click="selectLink(link)"
                     title="Select this peak (its arc is highlighted in the chromatin view)"
                   >
-                    <td class="mono">{{ link.chrom }}:{{ link.start.toLocaleString() }}–{{ link.end.toLocaleString() }}</td>
+                    <td class="mono">
+                      {{ link.chrom }}:{{ link.start.toLocaleString() }}–{{ link.end.toLocaleString() }}
+                      <button
+                        type="button"
+                        class="pdw-btn row-zoom"
+                        title="Zoom the chromatin view to ±5 kb around this peak"
+                        @click.stop="zoomTo(link)"
+                      >
+                        Zoom
+                      </button>
+                    </td>
                     <td>
                       <span v-if="typesAvailable" class="type-pill" :class="link.linkType">
                         {{ typeLabel(link.linkType) }}
@@ -311,7 +321,7 @@ const props = defineProps({
   config: { type: Object, default: null },
 });
 
-const emit = defineEmits(["update:Vars", "select-peak", "update:linkFilters"]);
+const emit = defineEmits(["update:Vars", "select-peak", "zoom-peak", "update:linkFilters"]);
 
 const injectedConfig = useDatasetActiveConfig();
 const activeConfig = computed(() => props.config || injectedConfig.value || {});
@@ -501,6 +511,10 @@ function noLinksMessage(gene) {
 function selectLink(link) {
   if (isSelected(link)) return emit("select-peak", null);
   emit("select-peak", { gene: selectedGene.value, chrom: link.chrom, start: link.start, end: link.end });
+}
+
+function zoomTo(link) {
+  emit("zoom-peak", { gene: selectedGene.value, chrom: link.chrom, start: link.start, end: link.end });
 }
 
 function isSelected(link) {
@@ -794,6 +808,12 @@ function corrWidth(r) {
 .links-table tbody tr.selected {
   background: #eef2ff;
   box-shadow: inset 3px 0 0 var(--pdw-primary);
+}
+
+.row-zoom {
+  margin-left: 6px;
+  padding: 0 8px;
+  font-family: inherit;
 }
 
 .mono {

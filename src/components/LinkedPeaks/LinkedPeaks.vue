@@ -6,6 +6,7 @@
       :focused-peak="PrecisionVars.chromatinFocus"
       @update:Vars="handleVarsUpdate"
       @select-peak="PrecisionVars.setChromatinFocus"
+      @zoom-peak="PrecisionVars.setChromatinZoom"
       :link-filters="PrecisionVars.linkFilters"
       @update:link-filters="PrecisionVars.setLinkFilters"
       :data-path="resolvedDataPath"

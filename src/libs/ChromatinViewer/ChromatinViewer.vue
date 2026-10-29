@@ -90,6 +90,16 @@
             >Calculated</span>
           </label>
 
+          <label class="label">
+            Scale:
+            <SegmentedToggle v-model="trackScale" aria-label="Track scale" :options="SCALE_OPTIONS" />
+          </label>
+
+          <label class="label">
+            Tracks:
+            <SegmentedToggle v-model="trackHeight" aria-label="Track height" :options="HEIGHT_OPTIONS" />
+          </label>
+
           <label
             class="checkbox-label"
             :class="{ disabled: !available.links }"
@@ -116,7 +126,13 @@
             <strong>{{ view.gene.name }}</strong>
             <span class="strand-note">({{ strandNote(view.gene) }})</span>
             {{ view.chrom }}:{{ formatBp(view.start) }}–{{ formatBp(view.end) }}
-            <span v-if="available.links && highlightLinks" class="link-summary">· {{ linkSummary }}</span>
+            <template v-if="view.zoomed">
+              <span class="zoom-note">· zoomed to ±5 kb around the selected peak</span>
+              <button type="button" class="pdw-btn back-btn" @click="setZoom(null)">
+                Back to full view
+              </button>
+            </template>
+            <span v-else-if="available.links && highlightLinks" class="link-summary">· {{ linkSummary }}</span>
           </div>
           <div class="svg-scroll">
             <svg ref="plotSvg" class="plot-svg"></svg>
@@ -130,6 +146,17 @@
           >
             <div class="tip-title">{{ tip.title }}</div>
             <div v-for="(line, i) in tip.lines" :key="i" class="tip-line">{{ line }}</div>
+            <div v-if="tip.actions?.length" class="tip-actions">
+              <button
+                v-for="action in tip.actions"
+                :key="action.label"
+                type="button"
+                class="pdw-btn tip-action"
+                @click="action.run"
+              >
+                {{ action.label }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -147,6 +174,7 @@ import { SIGNAL_MODES, readsPerMillion, formatSignal } from "../shared/chromatin
 import {
   CORRELATION_SCALE_MAX,
   LINK_TYPES,
+  formatBp as formatLength,
   NEGATIVE_COLOR,
   POSITIVE_COLOR,
   correlationStrength,
@@ -165,10 +193,12 @@ const props = defineProps({
   focus: { type: Object, default: null },
   // The Linked Peaks table's filters; arcs show the same links as the table
   linkFilters: { type: Object, default: null },
+  // Peak to zoom to (±5 kb), or null for the full region
+  zoom: { type: Object, default: null },
   config: { type: Object, default: null },
 });
 
-const emit = defineEmits(["update:Vars", "select-peak"]);
+const emit = defineEmits(["update:Vars", "select-peak", "zoom-peak"]);
 
 const { runWhenActive, observeResize } = useKeepAliveGate();
 const injectedConfig = useDatasetActiveConfig();
@@ -196,7 +226,21 @@ const GROUP_OPTIONS = [
   { value: "donor", label: "Donor", available: false },
 ];
 
-const TRACK_HEIGHT = 34;
+const HEIGHT_OPTIONS = [
+  { key: 34, label: "Compact" },
+  { key: 64, label: "Tall", title: "Taller tracks, for reading small peaks" },
+];
+const SCALE_OPTIONS = [
+  { key: "shared", label: "Shared", title: "One scale for all tracks: best for comparing cell types" },
+  {
+    key: "track",
+    label: "Per track",
+    title: "Each track scaled to its own maximum (shown at right): best for seeing the shape",
+  },
+];
+// "Zoom to peak" shows this much on each side of the peak's center
+const ZOOM_FLANK = 5000;
+const TIP_WIDTH = 290;
 const TRACK_GAP = 4;
 const GENE_LANE_HEIGHT = 56;
 const LINK_ROW_HEIGHT = 70;
@@ -240,6 +284,10 @@ const geneSuggestions = ref([]);
 const flank = ref(50000);
 const groupBy = ref("cell_type");
 const signalMode = ref("rpm");
+const trackScale = ref("shared");
+const trackHeight = ref(HEIGHT_OPTIONS[0].key);
+// Mirrors the zoom prop, so zooming also works without the store
+const zoomPeak = shallowRef(props.zoom);
 const highlightLinks = ref(true);
 
 // { gene, chrom, start, end, genes, signal, links }
@@ -250,6 +298,7 @@ const tip = shallowRef(null);
 
 let searchTimeout = null;
 let tipTimeout = null;
+let guideFrame = null;
 let resizeObserver = null;
 let loadSeq = 0;
 
@@ -296,6 +345,16 @@ watch(
 );
 
 watch(
+  () => props.zoom,
+  (peak) => {
+    // Our own zoom coming back through the store is already applied
+    if (peak === zoomPeak.value || (peak && zoomPeak.value && samePeak(peak, zoomPeak.value))) return;
+    zoomPeak.value = peak;
+    if (view.value && manager.value) runWhenActive(loadRegion);
+  }
+);
+
+watch(
   () => props.linkFilters,
   () => {
     if (view.value) runWhenActive(draw);
@@ -303,11 +362,13 @@ watch(
   { deep: true }
 );
 
+// A new region size leaves the zoomed view
 watch(flank, () => {
-  if (view.value) runWhenActive(loadRegion);
+  if (zoomPeak.value) setZoom(null);
+  else if (view.value) runWhenActive(loadRegion);
 });
 
-watch([signalMode, highlightLinks, groupBy], () => runWhenActive(draw));
+watch([signalMode, highlightLinks, groupBy, trackScale, trackHeight], () => runWhenActive(draw));
 
 async function initWithViewer(viewerInstance) {
   try {
@@ -355,6 +416,7 @@ useWidgetDataEngine({
 onBeforeUnmount(() => {
   if (searchTimeout) clearTimeout(searchTimeout);
   clearTimeout(tipTimeout);
+  if (guideFrame) cancelAnimationFrame(guideFrame);
   resizeObserver?.disconnect();
 });
 
@@ -380,12 +442,23 @@ async function handleGeneSelect() {
   await loadRegion();
 }
 
-// The focused peak, if it belongs to this gene
+// The focused (selected) peak, if it belongs to this gene
 function focusForGene(gene) {
-  const f = props.focus;
-  if (!f || !gene || String(f.gene).toUpperCase() !== gene.name.toUpperCase()) return null;
+  return peakForGene(props.focus, gene);
+}
+
+function peakForGene(peak, gene) {
+  if (!peak || !gene || String(peak.gene).toUpperCase() !== gene.name.toUpperCase()) return null;
   const bare = (c) => String(c).replace(/^chr/i, "");
-  return bare(f.chrom) === bare(gene.chrom) ? f : null;
+  return bare(peak.chrom) === bare(gene.chrom) ? peak : null;
+}
+
+// Zoom to a peak (±5 kb), or null to go back to the full region
+function setZoom(peak) {
+  hideTip();
+  zoomPeak.value = peak;
+  emit("zoom-peak", peak);
+  runWhenActive(loadRegion);
 }
 
 async function loadRegion() {
@@ -405,14 +478,17 @@ async function loadRegion() {
     }
     const links = available.value.links ? await manager.value.getLinksForGene(gene.name) : [];
     if (seq !== loadSeq) return;
-    let { start, end } = regionAround(gene, links);
+    const zoomed = peakForGene(zoomPeak.value, gene);
+    let { start, end } = zoomed
+      ? { start: linkMid(zoomed) - ZOOM_FLANK, end: linkMid(zoomed) + ZOOM_FLANK }
+      : regionAround(gene, links);
     start = Math.max(0, start);
     const [genes, signal] = await Promise.all([
       manager.value.getGenesInRegion(gene.chrom, start, end),
       manager.value.getChromatinSignal(gene.chrom, start, end),
     ]);
     if (seq !== loadSeq) return;
-    view.value = { gene, chrom: gene.chrom, start, end, genes, signal, links };
+    view.value = { gene, chrom: gene.chrom, start, end, genes, signal, links, zoomed };
     if (!signal.length) message.value = "No accessible peaks in this region.";
     await nextTick();
     draw();
@@ -469,7 +545,7 @@ function draw() {
   // Links sit right under the genes, so they're visible without scrolling past the tracks
   const linkRowTop = MARGIN.top + geneRowHeight + 4;
   const tracksTop = linkRowTop + (showLinks ? LINK_ROW_HEIGHT : 0) + 20;
-  const tracksHeight = groups.value.length * (TRACK_HEIGHT + TRACK_GAP);
+  const tracksHeight = groups.value.length * (trackHeight.value + TRACK_GAP);
   const tracksBottom = tracksTop + tracksHeight;
   const height = tracksBottom + MARGIN.bottom;
 
@@ -510,7 +586,12 @@ function draw() {
   drawFocus(svg, x, clampX, tracksBottom, v);
   drawGeneModel(svg, lanes, x, clampX, v);
   drawTracks(svg, x, tracksTop, width, v);
-  if (showLinks) drawLinkArcs(svg, x, linkRowTop, width, v, shownLinks.value, showBand);
+  drawHoverGuide(svg, x, tracksTop, tracksBottom, width, v);
+  // Zoomed in, arcs of other peaks would only cross the view as flat lines
+  const arcLinks = v.zoomed
+    ? shownLinks.value.filter((l) => l.end >= v.start && l.start <= v.end)
+    : shownLinks.value;
+  if (showLinks) drawLinkArcs(svg, x, linkRowTop, width, v, arcLinks, showBand);
 }
 
 // Outline the selected linked peak
@@ -717,9 +798,10 @@ function geneTipLines(gene) {
 }
 
 function drawTracks(svg, x, top, width, v) {
+  const height = trackHeight.value;
   const byGroup = d3.group(v.signal, (d) => d.group);
   const yMax = d3.max(v.signal, signalValue) || 1;
-  const y = d3.scaleLinear().domain([0, yMax]).range([0, TRACK_HEIGHT - 4]);
+  const perTrack = trackScale.value === "track";
   const color = d3.scaleOrdinal(d3.schemeTableau10).domain(groups.value);
   const unit = SIGNAL_MODES.find((m) => m.key === signalMode.value).unit;
 
@@ -727,16 +809,22 @@ function drawTracks(svg, x, top, width, v) {
   const backgrounds = svg.insert("g", ":first-child").attr("class", "track-backgrounds");
   const g = svg.append("g").attr("class", "tracks");
   groups.value.forEach((group, i) => {
-    const trackTop = top + i * (TRACK_HEIGHT + TRACK_GAP);
-    const baseline = trackTop + TRACK_HEIGHT;
+    const trackTop = top + i * (height + TRACK_GAP);
+    const baseline = trackTop + height;
     const row = g.append("g");
+    const peaks = byGroup.get(group) || [];
+    const groupMax = d3.max(peaks, signalValue) || 0;
+    const y = d3
+      .scaleLinear()
+      .domain([0, perTrack ? groupMax || 1 : yMax])
+      .range([0, height - 4]);
 
     backgrounds
       .append("rect")
       .attr("x", MARGIN.left)
       .attr("y", trackTop)
       .attr("width", width - MARGIN.left - MARGIN.right)
-      .attr("height", TRACK_HEIGHT)
+      .attr("height", height)
       .attr("fill", i % 2 ? "#f8fafc" : "#ffffff");
 
     row
@@ -751,7 +839,7 @@ function drawTracks(svg, x, top, width, v) {
     row
       .append("text")
       .attr("x", MARGIN.left - 10)
-      .attr("y", trackTop + TRACK_HEIGHT / 2 + 6)
+      .attr("y", trackTop + height / 2 + 6)
       .attr("text-anchor", "end")
       .attr("font-size", 14)
       .attr("fill", "#1a202c")
@@ -761,22 +849,31 @@ function drawTracks(svg, x, top, width, v) {
 
     row
       .selectAll("rect.peak")
-      .data(byGroup.get(group) || [])
+      .data(peaks)
       .join("rect")
       .attr("class", "peak")
       .attr("x", (d) => x(Math.max(d.start, v.start)))
       .attr("width", (d) => Math.max(1.5, x(Math.min(d.end, v.end)) - x(Math.max(d.start, v.start))))
       .attr("y", (d) => baseline - y(signalValue(d)))
       .attr("height", (d) => Math.max(0.5, y(signalValue(d))))
-      .attr("fill", color(group))
-      .append("title")
-      .text(
-        (d) =>
-          `${group}\n${v.chrom}:${formatBp(d.start)}–${formatBp(d.end)}\n${formatSignal(signalValue(d))} ${unit}`
-      );
+      .attr("fill", color(group));
+
+    // Per-track scales differ, so each track says what its full height means
+    if (perTrack) {
+      row
+        .append("text")
+        .attr("x", width - MARGIN.right - 4)
+        .attr("y", trackTop + 14)
+        .attr("text-anchor", "end")
+        .attr("font-size", 14)
+        .attr("fill", "#475569")
+        .attr("stroke", "#ffffff")
+        .attr("stroke-width", 3)
+        .attr("paint-order", "stroke")
+        .text(groupMax ? `max ${formatSignal(groupMax)}` : "no signal");
+    }
   });
 
-  // One shared scale for all tracks, so heights compare across groups
   svg
     .append("text")
     .attr("x", width - MARGIN.right)
@@ -784,7 +881,73 @@ function drawTracks(svg, x, top, width, v) {
     .attr("text-anchor", "end")
     .attr("font-size", 14)
     .attr("fill", "#64748b")
-    .text(`Scale: 0–${formatSignal(yMax)} ${unit} (same for all tracks)`);
+    .text(
+      perTrack
+        ? `Each track scaled to its own max (${unit})`
+        : `Scale: 0–${formatSignal(yMax)} ${unit} (same for all tracks)`
+    );
+}
+
+// Vertical guide across the tracks; the hover card lists every track's value there
+function drawHoverGuide(svg, x, top, bottom, width, v) {
+  const left = MARGIN.left;
+  const right = width - MARGIN.right;
+  const byGroup = d3.group(v.signal, (d) => d.group);
+  const unit = SIGNAL_MODES.find((m) => m.key === signalMode.value).unit;
+  // Peaks narrower than a few pixels are still picked up near the pointer
+  const tolerance = (3 * (v.end - v.start)) / (right - left);
+
+  const guide = svg
+    .append("line")
+    .attr("y1", top)
+    .attr("y2", bottom)
+    .attr("stroke", "#334155")
+    .attr("stroke-dasharray", "3 3")
+    .style("pointer-events", "none")
+    .style("display", "none");
+
+  let lastEvent = null;
+  const update = () => {
+    guideFrame = null;
+    const [mx] = d3.pointer(lastEvent, svg.node());
+    const pos = x.invert(mx);
+    guide.attr("x1", mx).attr("x2", mx).style("display", null);
+    const lines = [];
+    let peak = null;
+    for (const group of groups.value) {
+      let best = null;
+      for (const d of byGroup.get(group) || []) {
+        if (d.start - tolerance <= pos && pos <= d.end + tolerance && (!best || d.signal > best.signal)) {
+          best = d;
+        }
+      }
+      if (best) {
+        peak = peak || best;
+        lines.push(`${group}: ${formatSignal(signalValue(best))}`);
+      }
+    }
+    const title = `${v.chrom}:${formatBp(pos)}`;
+    if (!peak) return showTip(lastEvent, title, ["No accessible peak here"]);
+    showTip(lastEvent, title, [`Peak ${formatBp(peak.start)}–${formatBp(peak.end)} (${unit})`, ...lines]);
+  };
+
+  svg
+    .append("rect")
+    .attr("x", left)
+    .attr("y", top)
+    .attr("width", right - left)
+    .attr("height", bottom - top)
+    .attr("fill", "transparent")
+    .on("mousemove", (event) => {
+      lastEvent = event;
+      if (!guideFrame) guideFrame = requestAnimationFrame(update);
+    })
+    .on("mouseleave", () => {
+      if (guideFrame) cancelAnimationFrame(guideFrame);
+      guideFrame = null;
+      guide.style("display", "none");
+      hideTip();
+    });
 }
 
 // Signac-style arcs from the gene's TSS to each linked peak. Width and opacity follow |r| on
@@ -896,9 +1059,11 @@ function drawLinkArcs(svg, x, top, width, v, links, showBand) {
     .on("mouseenter", (event, l) => {
       visible.attr("stroke-width", (d) => arcWidth(d) + (d === l ? 2 : 0));
       showBand(l);
-      showTip(event, `Linked peak · ${v.gene.name}`, linkTipLines(v, l));
+      showTip(event, `Linked peak · ${v.gene.name}`, linkTipLines(v, l), [
+        { label: "Zoom to peak", run: () => setZoom(peakFor(v, l)) },
+      ]);
     })
-    .on("mousemove", moveTip)
+    // The card stays put so the pointer can reach its button
     .on("mouseleave", () => {
       visible.attr("stroke-width", arcWidth);
       showBand(null);
@@ -906,7 +1071,53 @@ function drawLinkArcs(svg, x, top, width, v, links, showBand) {
     })
     .on("click", (event, l) => selectPeak(v, l));
 
-  drawEdgeMarkers(g, baseline, left, right, v, links);
+  if (v.zoomed) drawTssMarker(g, baseline, left, right, v);
+  else drawEdgeMarkers(g, baseline, left, right, v, links);
+}
+
+// Zoomed in, the TSS is usually off-screen: point the way the arcs go to reach it
+function drawTssMarker(g, baseline, left, right, v) {
+  const tss = geneTss(v.gene);
+  if (tss >= v.start && tss <= v.end) return;
+  const toLeft = tss < v.start;
+  const distance = formatLength(Math.abs(tss - linkMid(v.zoomed)));
+  drawMarker(
+    g,
+    toLeft ? left + 4 : right - 4,
+    baseline,
+    toLeft ? "start" : "end",
+    toLeft ? `◂ ${v.gene.name} TSS, ${distance}` : `${v.gene.name} TSS, ${distance} ▸`,
+    () => setZoom(null),
+    (event) =>
+      showTip(event, `${v.gene.name} TSS is ${distance} to the ${toLeft ? "left" : "right"}`, [
+        "The arc continues to the TSS outside this view.",
+        "Click to go back to the full view",
+      ])
+  );
+}
+
+function drawMarker(g, x, baseline, anchor, label, onClick, onHover) {
+  const marker = g.append("g").style("cursor", "pointer").on("click", onClick);
+  const text = marker
+    .append("text")
+    .attr("x", x)
+    .attr("y", baseline - 6)
+    .attr("text-anchor", anchor)
+    .attr("font-size", 14)
+    .attr("font-weight", 600)
+    .attr("fill", "#475569")
+    .text(label);
+  const box = text.node().getBBox();
+  marker
+    .insert("rect", "text")
+    .attr("x", box.x - 4)
+    .attr("y", box.y - 1)
+    .attr("width", box.width + 8)
+    .attr("height", box.height + 2)
+    .attr("rx", 3)
+    .attr("fill", "#ffffff")
+    .attr("stroke", "#cbd5e1");
+  marker.on("mouseenter", onHover).on("mousemove", moveTip).on("mouseleave", hideTipSoon);
 }
 
 // "◂ 3" / "3 ▸" at the plot edges for links outside the region; clicking fits all links.
@@ -918,55 +1129,34 @@ function drawEdgeMarkers(g, baseline, left, right, v, links) {
   ];
   for (const { side, list, x: tx, anchor } of sides) {
     if (!list.length) continue;
-    const label = side === "left" ? `◂ ${list.length} more` : `${list.length} more ▸`;
-    const marker = g
-      .append("g")
-      .style("cursor", "pointer")
-      .on("click", () => {
+    drawMarker(
+      g,
+      tx,
+      baseline,
+      anchor,
+      side === "left" ? `◂ ${list.length} more` : `${list.length} more ▸`,
+      () => {
         hideTip();
         flank.value = "links";
-      });
-    const text = marker
-      .append("text")
-      .attr("x", tx)
-      .attr("y", baseline - 6)
-      .attr("text-anchor", anchor)
-      .attr("font-size", 14)
-      .attr("font-weight", 600)
-      .attr("fill", "#475569")
-      .text(label);
-    const box = text.node().getBBox();
-    marker
-      .insert("rect", "text")
-      .attr("x", box.x - 4)
-      .attr("y", box.y - 1)
-      .attr("width", box.width + 8)
-      .attr("height", box.height + 2)
-      .attr("rx", 3)
-      .attr("fill", "#ffffff")
-      .attr("stroke", "#cbd5e1");
-    marker
-      .on("mouseenter", (event) =>
-        showTip(
-          event,
-          `${list.length} linked peak${list.length === 1 ? "" : "s"} ${side} of this region`,
-          [
-            ...list
-              .slice(0, 8)
-              .map((l) => `${formatBp(l.start)} · r = ${formatR(l.correlation)} · ${formatDistance(l.distance)}`),
-            ...(list.length > 8 ? [`…and ${list.length - 8} more`] : []),
-            "Click to show all linked peaks",
-          ]
-        )
-      )
-      .on("mousemove", moveTip)
-      .on("mouseleave", hideTipSoon);
+      },
+      (event) =>
+        showTip(event, `${list.length} linked peak${list.length === 1 ? "" : "s"} ${side} of this region`, [
+          ...list
+            .slice(0, 8)
+            .map((l) => `${formatBp(l.start)} · r = ${formatR(l.correlation)} · ${formatDistance(l.distance)}`),
+          ...(list.length > 8 ? [`…and ${list.length - 8} more`] : []),
+          "Click to show all linked peaks",
+        ])
+    );
   }
 }
 
 function selectPeak(v, l) {
-  if (isFocused(v, l)) return emit("select-peak", null);
-  emit("select-peak", { gene: v.gene.name, chrom: l.chrom, start: l.start, end: l.end });
+  emit("select-peak", isFocused(v, l) ? null : peakFor(v, l));
+}
+
+function peakFor(v, l) {
+  return { gene: v.gene.name, chrom: l.chrom, start: l.start, end: l.end };
 }
 
 function isFocused(v, l) {
@@ -1007,16 +1197,17 @@ function linkTipLines(v, l) {
 
 // ---- Hover card. It lingers briefly so the pointer can move onto it.
 
+// Right of the pointer, or left of it near the right edge
 function tipPosition(event) {
   const rect = plotContainer.value.getBoundingClientRect();
-  const x = event.clientX - rect.left + 14;
-  const y = event.clientY - rect.top + 14;
-  return { x: Math.max(4, Math.min(x, rect.width - 300)), y };
+  const px = event.clientX - rect.left;
+  const x = px + 14 + TIP_WIDTH + 8 > rect.width ? px - 14 - TIP_WIDTH : px + 14;
+  return { x: Math.max(4, x), y: event.clientY - rect.top + 14 };
 }
 
-function showTip(event, title, lines) {
+function showTip(event, title, lines, actions = []) {
   clearTimeout(tipTimeout);
-  tip.value = { ...tipPosition(event), title, lines };
+  tip.value = { ...tipPosition(event), title, lines, actions };
 }
 
 function moveTip(event) {
@@ -1263,7 +1454,9 @@ function formatBp(value) {
 .chart-tooltip {
   position: absolute;
   z-index: 20;
+  width: max-content;
   max-width: 290px;
+  box-sizing: border-box;
   padding: 6px 10px;
   background: var(--pdw-surface);
   border: 1px solid var(--pdw-border);
@@ -1281,7 +1474,23 @@ function formatBp(value) {
 
 .tip-line {
   color: var(--pdw-text-muted);
-  white-space: nowrap;
+}
+
+.tip-actions {
+  margin-top: 6px;
+}
+
+.tip-action,
+.back-btn {
+  padding: 2px 10px;
+}
+
+.back-btn {
+  margin-left: 8px;
+}
+
+.zoom-note {
+  color: var(--pdw-text-muted);
 }
 
 .loading-container,
