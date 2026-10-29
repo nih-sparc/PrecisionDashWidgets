@@ -11,6 +11,15 @@ export const LINK_TYPES = [
 // every gene (scaling to each gene's strongest link made r = 0.08 look as strong as 0.3)
 export const CORRELATION_SCALE_MAX = 0.5;
 
+// Link colors by sign, used by the table and the chromatin view's arcs
+export const POSITIVE_COLOR = "#f59e0b";
+export const NEGATIVE_COLOR = "#3b82f6";
+
+/** Filters shared by the table and the chromatin view's arcs: everything shown. */
+export function defaultLinkFilters() {
+  return { minAbsCorrelation: 0, direction: "all", types: LINK_TYPES.map((t) => t.value) };
+}
+
 export const MOST_OPEN_TOOLTIP =
   "Cell type with the highest accessibility at this peak. The correlation itself is computed across all cells.";
 
@@ -55,6 +64,23 @@ export function filterLinks(links, { minAbsCorrelation = 0, direction = "all", t
     if (types && !types.has(l.linkType)) return false;
     return true;
   });
+}
+
+/** The table's filters as filterLinks() options; type filtering only when the data has types. */
+export function linkFilterOptions(filters, links) {
+  const f = { ...defaultLinkFilters(), ...filters };
+  return {
+    minAbsCorrelation: f.minAbsCorrelation,
+    direction: f.direction,
+    types: hasLinkTypes(links) ? new Set(f.types) : null,
+  };
+}
+
+/** Same chromosome, start and end (chromosomes compare with or without "chr"). */
+export function samePeak(a, b) {
+  if (!a || !b) return false;
+  const bare = (c) => String(c).replace(/^chr/i, "");
+  return bare(a.chrom) === bare(b.chrom) && a.start === b.start && a.end === b.end;
 }
 
 export function sortLinks(links, sortBy) {

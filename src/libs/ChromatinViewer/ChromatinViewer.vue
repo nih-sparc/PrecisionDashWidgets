@@ -112,7 +112,7 @@
               class="checkbox"
               :disabled="!available.links"
             />
-            Highlight linked peaks
+            Show linked peaks
           </label>
         </div>
 
@@ -132,6 +132,16 @@
           <div class="svg-scroll">
             <svg ref="plotSvg" class="plot-svg"></svg>
           </div>
+          <div
+            v-if="tip"
+            class="chart-tooltip"
+            :style="{ left: `${tip.x}px`, top: `${tip.y}px` }"
+            @mouseenter="keepTip"
+            @mouseleave="hideTipSoon"
+          >
+            <div class="tip-title">{{ tip.title }}</div>
+            <div v-for="(line, i) in tip.lines" :key="i" class="tip-line">{{ line }}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -144,16 +154,31 @@ import { ref, shallowRef, computed, onBeforeUnmount, watch, nextTick } from "vue
 import * as d3 from "d3";
 import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
+import {
+  CORRELATION_SCALE_MAX,
+  LINK_TYPES,
+  NEGATIVE_COLOR,
+  POSITIVE_COLOR,
+  correlationStrength,
+  filterLinks,
+  formatDistance,
+  formatPValue,
+  hasLinkTypes,
+  linkFilterOptions,
+  samePeak,
+} from "../LinkedPeaksTable/linkedPeaks.js";
 
 const props = defineProps({
   dataPath: { type: String, default: "/data" },
   gene: { type: String, default: null },
-  // Peak to show and highlight ({ gene, chrom, start, end }), e.g. from the linked peaks table
+  // Selected linked peak ({ gene, chrom, start, end }), from an arc or the linked peaks table
   focus: { type: Object, default: null },
+  // The Linked Peaks table's filters; arcs show the same links as the table
+  linkFilters: { type: Object, default: null },
   config: { type: Object, default: null },
 });
 
-const emit = defineEmits(["update:Vars"]);
+const emit = defineEmits(["update:Vars", "select-peak"]);
 
 const { runWhenActive, observeResize } = useKeepAliveGate();
 const injectedConfig = useDatasetActiveConfig();
@@ -184,15 +209,16 @@ const GROUP_OPTIONS = [
 const TRACK_HEIGHT = 34;
 const TRACK_GAP = 4;
 const GENE_LANE_HEIGHT = 34;
-const LINK_ROW_HEIGHT = 60;
+const LINK_ROW_HEIGHT = 70;
 const MARGIN = { top: 34, right: 20, bottom: 12, left: 190 };
 // The target gene and focused peak use the theme's primary color (--pdw-primary), read
 // at draw time: SVG fill/stroke attributes can't reference CSS variables
 const DEFAULT_ACCENT = "#667eea";
 let accentColor = DEFAULT_ACCENT;
 const OTHER_GENE_COLOR = "#94a3b8";
-const LINK_COLOR = "#f59e0b";
-const FOCUS_PADDING = 2000;
+// Unique ids for SVG clip paths when several chromatin views are on a page
+let instanceCount = 0;
+const clipId = `chromatin-links-clip-${++instanceCount}`;
 
 const plotSvg = ref(null);
 const plotContainer = ref(null);
@@ -220,17 +246,30 @@ const highlightLinks = ref(true);
 // { gene, chrom, start, end, genes, signal, links }
 const view = shallowRef(null);
 
+// Hover card for arcs (and tracks): { x, y, title, lines }
+const tip = shallowRef(null);
+
 let searchTimeout = null;
+let tipTimeout = null;
 let resizeObserver = null;
 let loadSeq = 0;
 
-const linkSummary = computed(() => {
+// The links the table's filters keep
+const shownLinks = computed(() => {
   const links = view.value?.links || [];
-  if (!links.length) return `No linked peaks for ${view.value.gene.name}.`;
-  const shown = links.filter((l) => l.end >= view.value.start && l.start <= view.value.end);
-  const hidden = links.length - shown.length;
-  const base = `${links.length} linked peak${links.length === 1 ? "" : "s"}`;
-  return hidden ? `${base} (${hidden} outside this region — choose "All linked peaks" to see them)` : base;
+  return filterLinks(links, linkFilterOptions(props.linkFilters, links));
+});
+
+const linkSummary = computed(() => {
+  const v = view.value;
+  const links = v?.links || [];
+  if (!links.length) return `No linked peaks for ${v.gene.name}.`;
+  const shown = shownLinks.value;
+  const outside = shown.filter((l) => l.end < v.start || l.start > v.end).length;
+  let text = `${shown.length} linked peak${shown.length === 1 ? "" : "s"}`;
+  if (shown.length !== links.length) text += ` (of ${links.length}; the rest are hidden by the Linked Peaks filters)`;
+  if (outside) text += ` · ${outside} outside this region, marked at the edges`;
+  return text;
 });
 
 // The gene is shared with the Linked Peaks panel; names compare case-insensitively, as there
@@ -249,18 +288,20 @@ watch(selectedGene, (newVal) => {
   if (newVal) emit("update:Vars", "selectedGene", newVal);
 });
 
-// A peak picked elsewhere: redraw if it's already in view, otherwise widen the region.
-// When the gene changes too, the gene watcher's load already includes the peak.
+// Selecting a peak only emphasizes it; the view stays where it is
 watch(
   () => props.focus,
   () => {
-    const v = view.value;
-    if (!v || !manager.value) return;
-    const f = focusForGene(v.gene);
-    if (!f) return runWhenActive(draw);
-    if (f.start >= v.start && f.end <= v.end) runWhenActive(draw);
-    else runWhenActive(loadRegion);
+    if (view.value) runWhenActive(draw);
   }
+);
+
+watch(
+  () => props.linkFilters,
+  () => {
+    if (view.value) runWhenActive(draw);
+  },
+  { deep: true }
 );
 
 watch(flank, () => {
@@ -331,6 +372,7 @@ useWidgetDataEngine({
 
 onBeforeUnmount(() => {
   if (searchTimeout) clearTimeout(searchTimeout);
+  clearTimeout(tipTimeout);
   resizeObserver?.disconnect();
 });
 
@@ -379,15 +421,9 @@ async function loadRegion() {
       draw();
       return;
     }
-    const links = available.value.links ? await manager.value.getLinkedPeaks(gene.name) : [];
+    const links = available.value.links ? await manager.value.getLinksForGene(gene.name) : [];
     if (seq !== loadSeq) return;
     let { start, end } = regionAround(gene, links);
-    // Widen past the chosen region size if needed so a focused peak is visible
-    const f = focusForGene(gene);
-    if (f) {
-      start = Math.min(start, f.start - FOCUS_PADDING);
-      end = Math.max(end, f.end + FOCUS_PADDING);
-    }
     start = Math.max(0, start);
     const [genes, signal] = await Promise.all([
       manager.value.getGenesInRegion(gene.chrom, start, end),
@@ -427,6 +463,8 @@ function draw() {
   accentColor = getComputedStyle(svgEl).getPropertyValue("--pdw-primary").trim() || DEFAULT_ACCENT;
   const svg = d3.select(svgEl);
   svg.selectAll("*").remove();
+  // The hovered element is gone, so its mouseleave will never fire
+  hideTip();
 
   const v = view.value;
   if (!v) {
@@ -468,32 +506,28 @@ function draw() {
     )
     .call((axis) => axis.selectAll("text").attr("font-size", 14));
 
-  // Linked peak bands sit behind everything else
-  const visibleLinks = showLinks
-    ? v.links.filter((l) => l.end >= v.start && l.start <= v.end)
-    : [];
-  const maxCorr = d3.max(visibleLinks, (l) => Math.abs(l.correlation ?? 0)) || 1;
-  svg
-    .append("g")
-    .selectAll("rect")
-    .data(visibleLinks)
-    .join("rect")
-    .attr("x", (l) => clampX(l.start) - 1.5)
-    .attr("width", (l) => Math.max(3, clampX(l.end) - clampX(l.start) + 3))
-    .attr("y", MARGIN.top)
-    .attr("height", tracksBottom - MARGIN.top)
-    .attr("fill", LINK_COLOR)
-    .attr("opacity", (l) => 0.12 + 0.3 * (Math.abs(l.correlation ?? 0) / maxCorr))
-    .append("title")
-    .text((l) => linkTooltip(v, l));
+  // Band behind the tracks for the hovered link (drawn on hover, under everything else)
+  const hoverBand = svg.append("g").attr("class", "hover-band");
+  const showBand = (l) => {
+    hoverBand.selectAll("*").remove();
+    if (!l || l.end < v.start || l.start > v.end) return;
+    hoverBand
+      .append("rect")
+      .attr("x", clampX(l.start) - 2)
+      .attr("width", Math.max(4, clampX(l.end) - clampX(l.start) + 4))
+      .attr("y", MARGIN.top)
+      .attr("height", tracksBottom - MARGIN.top)
+      .attr("fill", linkColor(l))
+      .attr("opacity", 0.18);
+  };
 
   drawFocus(svg, x, clampX, tracksBottom, v);
   drawGeneModel(svg, lanes, x, clampX, v);
   drawTracks(svg, x, tracksTop, width, v);
-  if (showLinks) drawLinkArcs(svg, x, clampX, linkRowTop, width, v, visibleLinks);
+  if (showLinks) drawLinkArcs(svg, x, linkRowTop, width, v, shownLinks.value, showBand);
 }
 
-// Outline the peak picked in the linked peaks table
+// Outline the selected linked peak
 function drawFocus(svg, x, clampX, bottom, v) {
   const f = focusForGene(v.gene);
   if (!f || f.end < v.start || f.start > v.end) return;
@@ -677,49 +711,252 @@ function drawTracks(svg, x, top, width, v) {
     .text(`Scale: 0–${formatSignal(yMax)} ${unit} (same for all tracks)`);
 }
 
-// Signac-style arcs from the gene's TSS to each linked peak
-function drawLinkArcs(svg, x, clampX, top, width, v, links) {
+// Signac-style arcs from the gene's TSS to each linked peak. Width and opacity follow |r| on
+// the same fixed scale as the table's bars; color is the sign. Arcs to peaks outside the
+// region run to the plot edge (clipped), and edge markers count them.
+function drawLinkArcs(svg, x, top, width, v, links, showBand) {
   const baseline = top + LINK_ROW_HEIGHT - 8;
-  const tss = v.gene.strand === "-" ? v.gene.end : v.gene.start;
-  const corrMax = d3.max(links, (l) => Math.abs(l.correlation ?? 0)) || 1;
+  const left = MARGIN.left;
+  const right = width - MARGIN.right;
+  const tssX = x(geneTss(v.gene));
   const g = svg.append("g").attr("class", "links");
 
+  // Row label and color key in the left margin
   g.append("text")
-    .attr("x", MARGIN.left - 10)
-    .attr("y", baseline - 8)
+    .attr("x", left - 10)
+    .attr("y", top + 16)
     .attr("text-anchor", "end")
     .attr("font-size", 14)
     .attr("font-weight", 600)
     .attr("fill", "#1a202c")
-    .text("Links");
+    .text("Links")
+    .append("title")
+    .text(
+      `Arcs join each linked peak to ${v.gene.name}'s TSS. Thicker, darker arcs have a larger |r| (scale 0–${CORRELATION_SCALE_MAX}).`
+    );
+  [
+    ["r > 0", POSITIVE_COLOR],
+    ["r < 0", NEGATIVE_COLOR],
+  ].forEach(([label, color], i) => {
+    const y = top + 36 + i * 18;
+    g.append("line")
+      .attr("x1", left - 82)
+      .attr("x2", left - 62)
+      .attr("y1", y - 5)
+      .attr("y2", y - 5)
+      .attr("stroke", color)
+      .attr("stroke-width", 3);
+    g.append("text")
+      .attr("x", left - 10)
+      .attr("y", y)
+      .attr("text-anchor", "end")
+      .attr("font-size", 14)
+      .attr("fill", "#475569")
+      .text(label);
+  });
 
   g.append("line")
-    .attr("x1", MARGIN.left)
-    .attr("x2", width - MARGIN.right)
+    .attr("x1", left)
+    .attr("x2", right)
     .attr("y1", baseline)
     .attr("y2", baseline)
     .attr("stroke", "#e2e8f0");
 
-  g.selectAll("path")
-    .data(links)
+  g.append("clipPath")
+    .attr("id", clipId)
+    .append("rect")
+    .attr("x", left)
+    .attr("y", top)
+    .attr("width", right - left)
+    .attr("height", LINK_ROW_HEIGHT);
+
+  const arcPath = (l) => {
+    const x2 = x(linkMid(l));
+    const h = Math.min(LINK_ROW_HEIGHT - 16, 8 + Math.abs(x2 - tssX) / 3);
+    return `M${tssX},${baseline} Q${(tssX + x2) / 2},${baseline - 2 * h} ${x2},${baseline}`;
+  };
+  // Strongest on top, the selected link above all
+  const selected = links.find((l) => isFocused(v, l));
+  const ordered = [...links].sort(
+    (a, b) => (a === selected) - (b === selected) || correlationStrength(a.correlation) - correlationStrength(b.correlation)
+  );
+  const arcs = g.append("g").attr("clip-path", `url(#${clipId})`);
+
+  if (selected) {
+    arcs
+      .append("path")
+      .attr("d", arcPath(selected))
+      .attr("fill", "none")
+      .attr("stroke", accentColor)
+      .attr("stroke-width", arcWidth(selected) + 5)
+      .attr("opacity", 0.35);
+  }
+
+  const visible = arcs
+    .append("g")
+    .selectAll("path")
+    .data(ordered)
     .join("path")
-    .attr("d", (l) => {
-      const x1 = clampX(tss);
-      const x2 = clampX((l.start + l.end) / 2);
-      const h = Math.min(LINK_ROW_HEIGHT - 14, 8 + Math.abs(x2 - x1) / 3);
-      return `M${x1},${baseline} Q${(x1 + x2) / 2},${baseline - 2 * h} ${x2},${baseline}`;
-    })
+    .attr("d", arcPath)
     .attr("fill", "none")
-    .attr("stroke", (l) => ((l.correlation ?? 0) < 0 ? "#3b82f6" : LINK_COLOR))
-    .attr("stroke-width", (l) => 1 + 2 * (Math.abs(l.correlation ?? 0) / corrMax))
-    .attr("opacity", 0.85)
-    .append("title")
-    .text((l) => linkTooltip(v, l));
+    .attr("stroke", linkColor)
+    .attr("stroke-width", arcWidth)
+    .attr("opacity", (l) => (l === selected ? 1 : 0.35 + 0.65 * correlationStrength(l.correlation)));
+
+  // Wide invisible strokes make thin arcs easy to hover and click
+  arcs
+    .append("g")
+    .selectAll("path")
+    .data(ordered)
+    .join("path")
+    .attr("d", arcPath)
+    .attr("fill", "none")
+    .attr("stroke", "transparent")
+    .attr("stroke-width", 12)
+    .style("pointer-events", "stroke")
+    .style("cursor", "pointer")
+    .on("mouseenter", (event, l) => {
+      visible.attr("stroke-width", (d) => arcWidth(d) + (d === l ? 2 : 0));
+      showBand(l);
+      showTip(event, `Linked peak · ${v.gene.name}`, linkTipLines(v, l));
+    })
+    .on("mousemove", moveTip)
+    .on("mouseleave", () => {
+      visible.attr("stroke-width", arcWidth);
+      showBand(null);
+      hideTipSoon();
+    })
+    .on("click", (event, l) => selectPeak(v, l));
+
+  drawEdgeMarkers(g, baseline, left, right, v, links);
 }
 
-function linkTooltip(v, l) {
-  const corr = l.correlation == null ? "n/a" : l.correlation.toFixed(3);
-  return `Linked peak for ${v.gene.name}\n${v.chrom}:${formatBp(l.start)}–${formatBp(l.end)}\nCorrelation: ${corr}`;
+// "◂ 3" / "3 ▸" at the plot edges for links outside the region; clicking fits all links.
+// They sit on the baseline, below where the cut-off arcs leave the plot.
+function drawEdgeMarkers(g, baseline, left, right, v, links) {
+  const sides = [
+    { side: "left", list: links.filter((l) => l.end < v.start), x: left + 4, anchor: "start" },
+    { side: "right", list: links.filter((l) => l.start > v.end), x: right - 4, anchor: "end" },
+  ];
+  for (const { side, list, x: tx, anchor } of sides) {
+    if (!list.length) continue;
+    const label = side === "left" ? `◂ ${list.length} more` : `${list.length} more ▸`;
+    const marker = g
+      .append("g")
+      .style("cursor", "pointer")
+      .on("click", () => {
+        hideTip();
+        flank.value = "links";
+      });
+    const text = marker
+      .append("text")
+      .attr("x", tx)
+      .attr("y", baseline - 6)
+      .attr("text-anchor", anchor)
+      .attr("font-size", 14)
+      .attr("font-weight", 600)
+      .attr("fill", "#475569")
+      .text(label);
+    const box = text.node().getBBox();
+    marker
+      .insert("rect", "text")
+      .attr("x", box.x - 4)
+      .attr("y", box.y - 1)
+      .attr("width", box.width + 8)
+      .attr("height", box.height + 2)
+      .attr("rx", 3)
+      .attr("fill", "#ffffff")
+      .attr("stroke", "#cbd5e1");
+    marker
+      .on("mouseenter", (event) =>
+        showTip(
+          event,
+          `${list.length} linked peak${list.length === 1 ? "" : "s"} ${side} of this region`,
+          [
+            ...list
+              .slice(0, 8)
+              .map((l) => `${formatBp(l.start)} · r = ${formatR(l.correlation)} · ${formatDistance(l.distance)}`),
+            ...(list.length > 8 ? [`…and ${list.length - 8} more`] : []),
+            "Click to show all linked peaks",
+          ]
+        )
+      )
+      .on("mousemove", moveTip)
+      .on("mouseleave", hideTipSoon);
+  }
+}
+
+function selectPeak(v, l) {
+  if (isFocused(v, l)) return emit("select-peak", null);
+  emit("select-peak", { gene: v.gene.name, chrom: l.chrom, start: l.start, end: l.end });
+}
+
+function isFocused(v, l) {
+  return samePeak(focusForGene(v.gene), l);
+}
+
+function geneTss(gene) {
+  return gene.strand === "-" ? gene.end : gene.start;
+}
+
+function linkMid(l) {
+  return (l.start + l.end) / 2;
+}
+
+function linkColor(l) {
+  return (l.correlation ?? 0) < 0 ? NEGATIVE_COLOR : POSITIVE_COLOR;
+}
+
+function arcWidth(l) {
+  return 1 + 3 * correlationStrength(l.correlation);
+}
+
+function formatR(r) {
+  return r == null ? "n/a" : r.toFixed(3);
+}
+
+function linkTipLines(v, l) {
+  const lines = [`${l.chrom}:${formatBp(l.start)}–${formatBp(l.end)}`];
+  if (l.end < v.start || l.start > v.end) lines.push("(outside the visible region)");
+  if (hasLinkTypes([l])) {
+    lines.push(`Type: ${LINK_TYPES.find((t) => t.value === l.linkType)?.label ?? l.linkType}`);
+  }
+  lines.push(`Distance: ${formatDistance(l.distance)}`);
+  lines.push(`r = ${formatR(l.correlation)} · p = ${formatPValue(l.pValue)}`);
+  lines.push(isFocused(v, l) ? "Click to clear the selection" : "Click to select");
+  return lines;
+}
+
+// ---- Hover card. It lingers briefly so the pointer can move onto it.
+
+function tipPosition(event) {
+  const rect = plotContainer.value.getBoundingClientRect();
+  const x = event.clientX - rect.left + 14;
+  const y = event.clientY - rect.top + 14;
+  return { x: Math.max(4, Math.min(x, rect.width - 300)), y };
+}
+
+function showTip(event, title, lines) {
+  clearTimeout(tipTimeout);
+  tip.value = { ...tipPosition(event), title, lines };
+}
+
+function moveTip(event) {
+  if (tip.value) tip.value = { ...tip.value, ...tipPosition(event) };
+}
+
+function keepTip() {
+  clearTimeout(tipTimeout);
+}
+
+function hideTipSoon() {
+  clearTimeout(tipTimeout);
+  tipTimeout = setTimeout(hideTip, 150);
+}
+
+function hideTip() {
+  clearTimeout(tipTimeout);
+  tip.value = null;
 }
 
 function sortGroups(list) {
@@ -930,6 +1167,30 @@ function formatSignal(value) {
 
 .plot-svg {
   display: block;
+}
+
+.chart-tooltip {
+  position: absolute;
+  z-index: 20;
+  max-width: 290px;
+  padding: 6px 10px;
+  background: var(--pdw-surface);
+  border: 1px solid var(--pdw-border);
+  border-radius: var(--pdw-radius);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+  font-size: 14px;
+  color: var(--pdw-text);
+  pointer-events: auto;
+}
+
+.tip-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.tip-line {
+  color: var(--pdw-text-muted);
+  white-space: nowrap;
 }
 
 .loading-container,

@@ -6,6 +6,8 @@
       :focused-peak="PrecisionVars.chromatinFocus"
       @update:Vars="handleVarsUpdate"
       @select-peak="PrecisionVars.setChromatinFocus"
+      :link-filters="PrecisionVars.linkFilters"
+      @update:link-filters="PrecisionVars.setLinkFilters"
       :data-path="resolvedDataPath"
       :config="props.config"
     ></LinkedPeaksTable>

@@ -664,20 +664,6 @@ export class UMAPGeneViewer {
     }));
   }
 
-  /** Peaks linked to a gene: [{ start, end, correlation }]. */
-  async getLinkedPeaks(geneName) {
-    const rows = await this._query(`
-      SELECT peak_start, peak_end, correlation
-      FROM "${this._file("linked_peaks.parquet")}"
-      WHERE UPPER(gene_name) = UPPER(${sqlString(geneName)})
-    `);
-    return rows.map((r) => ({
-      start: Number(r.peak_start),
-      end: Number(r.peak_end),
-      correlation: r.correlation == null ? null : Number(r.correlation),
-    }));
-  }
-
   /** All links for a gene, with every column the file has. */
   async getLinksForGene(geneName) {
     const rows = await this._query(`

@@ -4,6 +4,8 @@
     <ChromatinViewer
       :gene="PrecisionVars.selectedChromatinGene ?? undefined"
       :focus="PrecisionVars.chromatinFocus"
+      :link-filters="PrecisionVars.linkFilters"
+      @select-peak="PrecisionVars.setChromatinFocus"
       @update:Vars="handleVarsUpdate"
       :data-path="resolvedDataPath"
       :config="props.config"

@@ -1,5 +1,8 @@
 import { ref } from "vue";
 import { defineStore } from "pinia";
+import { defaultLinkFilters } from "../libs/LinkedPeaksTable/linkedPeaks.js";
+
+type LinkFilters = { minAbsCorrelation: number; direction: string; types: string[] };
 
 export const usePrecisionStore = defineStore("precisionGlobalVars", () => {
   // Persistent selections (not cleared on dashboard switch)
@@ -9,8 +12,10 @@ export const usePrecisionStore = defineStore("precisionGlobalVars", () => {
   const selectedGene2 = ref<string | null>(null);
   const selectedGeneX = ref<string | null>(null);
   const selectedChromatinGene = ref<string | null>(null);
-  // Peak picked in the linked peaks table, shown in the chromatin view
+  // Linked peak selected in the table or the chromatin view's arcs
   const chromatinFocus = ref<{ gene: string; chrom: string; start: number; end: number } | null>(null);
+  // Linked Peaks table filters, which the chromatin view's arcs follow too
+  const linkFilters = ref<LinkFilters>(defaultLinkFilters());
 
   function setSelectedGene(gene: string | null) {
     selectedGene.value = gene === "" ? null : gene;
@@ -41,6 +46,13 @@ export const usePrecisionStore = defineStore("precisionGlobalVars", () => {
   function setChromatinFocus(peak: { gene: string; chrom: string; start: number; end: number } | null) {
     chromatinFocus.value = peak;
     if (peak) selectedChromatinGene.value = peak.gene;
+  }
+
+  function setLinkFilters(filters: Partial<LinkFilters>) {
+    linkFilters.value = { ...linkFilters.value, ...filters };
+  }
+  function resetLinkFilters() {
+    linkFilters.value = defaultLinkFilters();
   }
 
   // Generic setter that handles all properties
@@ -77,6 +89,7 @@ export const usePrecisionStore = defineStore("precisionGlobalVars", () => {
     selectedGeneX,
     selectedChromatinGene,
     chromatinFocus,
+    linkFilters,
     setSelectedGene,
     setSelectedMetadataColumn,
     setSelectedGene1,
@@ -84,6 +97,8 @@ export const usePrecisionStore = defineStore("precisionGlobalVars", () => {
     setSelectedGeneX,
     setSelectedChromatinGene,
     setChromatinFocus,
+    setLinkFilters,
+    resetLinkFilters,
     setSelection,
   };
 });

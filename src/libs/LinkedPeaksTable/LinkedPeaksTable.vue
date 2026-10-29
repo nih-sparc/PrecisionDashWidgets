@@ -142,7 +142,11 @@
               </div>
             </div>
 
-            <div class="table-scroll">
+            <p v-if="selectedHidden" class="plot-message">
+              The selected peak is hidden by the filters above.
+            </p>
+
+            <div ref="tableScroll" class="table-scroll">
               <table class="links-table">
                 <thead>
                   <tr>
@@ -204,7 +208,7 @@
                     :key="`${link.chrom}-${link.start}`"
                     :class="{ selected: isSelected(link) }"
                     @click="selectLink(link)"
-                    title="Show this peak in the chromatin view"
+                    title="Select this peak (its arc is highlighted in the chromatin view)"
                   >
                     <td class="mono">{{ link.chrom }}:{{ link.start.toLocaleString() }}–{{ link.end.toLocaleString() }}</td>
                     <td>
@@ -270,7 +274,7 @@
 
 <script setup>
 import SegmentedToggle from "../shared/SegmentedToggle.vue";
-import { ref, shallowRef, computed, onBeforeUnmount, watch } from "vue";
+import { ref, shallowRef, computed, onBeforeUnmount, watch, nextTick } from "vue";
 import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
 import {
   LINK_TYPES,
@@ -278,6 +282,9 @@ import {
   CORRELATION_SCALE_MAX,
   MOST_OPEN_TOOLTIP,
   correlationStrength,
+  defaultLinkFilters,
+  linkFilterOptions,
+  samePeak,
   hasLinkTypes,
   filterLinks,
   sortLinks,
@@ -291,12 +298,14 @@ import {
 const props = defineProps({
   dataPath: { type: String, default: "/data" },
   gene: { type: String, default: null },
-  // Peak shown in the chromatin view ({ chrom, start, end }), highlighted in the table
+  // Selected peak ({ chrom, start, end }), highlighted here and in the chromatin view
   focusedPeak: { type: Object, default: null },
+  // Filters shared with the chromatin view's arcs; without them the table keeps its own
+  linkFilters: { type: Object, default: null },
   config: { type: Object, default: null },
 });
 
-const emit = defineEmits(["update:Vars", "select-peak"]);
+const emit = defineEmits(["update:Vars", "select-peak", "update:linkFilters"]);
 
 const injectedConfig = useDatasetActiveConfig();
 const activeConfig = computed(() => props.config || injectedConfig.value || {});
@@ -319,10 +328,24 @@ const selectedGene = ref(props.gene || "");
 const geneSuggestions = ref([]);
 
 const links = shallowRef([]);
-const minAbsCorrelation = ref(0);
-const direction = ref("all");
-const selectedTypes = ref(LINK_TYPES.map((t) => t.value));
 const sortBy = ref("strength");
+const tableScroll = ref(null);
+
+const localFilters = ref(defaultLinkFilters());
+const filters = computed(() => props.linkFilters || localFilters.value);
+function filterModel(key) {
+  return computed({
+    get: () => filters.value[key],
+    set: (value) => {
+      const next = { ...filters.value, [key]: value };
+      localFilters.value = next;
+      emit("update:linkFilters", next);
+    },
+  });
+}
+const minAbsCorrelation = filterModel("minAbsCorrelation");
+const direction = filterModel("direction");
+const selectedTypes = filterModel("types");
 const showAbout = ref(false);
 
 let searchTimeout = null;
@@ -341,11 +364,7 @@ const correlationMax = computed(() => {
 });
 
 const filteredLinks = computed(() =>
-  filterLinks(links.value, {
-    minAbsCorrelation: minAbsCorrelation.value,
-    direction: direction.value,
-    types: typesAvailable.value ? new Set(selectedTypes.value) : null,
-  })
+  filterLinks(links.value, linkFilterOptions(filters.value, links.value))
 );
 const visibleLinks = computed(() => sortLinks(filteredLinks.value, sortBy.value));
 const summary = computed(() => summarizeLinks(filteredLinks.value));
@@ -364,6 +383,22 @@ watch(
 watch(selectedGene, (newVal) => {
   if (newVal) emit("update:Vars", "selectedGene", newVal);
 });
+
+const selectedHidden = computed(
+  () =>
+    !!props.focusedPeak &&
+    links.value.some((l) => isSelected(l)) &&
+    !filteredLinks.value.some((l) => isSelected(l))
+);
+
+// A peak selected here or from an arc: bring its row into view
+watch(
+  () => props.focusedPeak,
+  async () => {
+    await nextTick();
+    tableScroll.value?.querySelector("tr.selected")?.scrollIntoView({ block: "nearest" });
+  }
+);
 
 async function initWithViewer(viewerInstance) {
   try {
@@ -444,13 +479,15 @@ function noLinksMessage(gene) {
   return `No linked peaks for ${gene} in this dataset.`;
 }
 
+// Clicking the selected row again clears the selection
 function selectLink(link) {
+  if (isSelected(link)) return emit("select-peak", null);
   emit("select-peak", { gene: selectedGene.value, chrom: link.chrom, start: link.start, end: link.end });
 }
 
 function isSelected(link) {
   const f = props.focusedPeak;
-  return !!f && f.chrom === link.chrom && f.start === link.start && f.end === link.end;
+  return !!f && String(f.gene).toUpperCase() === selectedGene.value.toUpperCase() && samePeak(f, link);
 }
 
 function columnInfo(name) {
