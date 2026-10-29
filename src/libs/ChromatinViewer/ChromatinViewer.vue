@@ -210,6 +210,7 @@ const TRACK_HEIGHT = 34;
 const TRACK_GAP = 4;
 const GENE_LANE_HEIGHT = 50;
 const LINK_ROW_HEIGHT = 70;
+const MIN_ARC_WIDTH = 8;
 // Top margin holds the upstream/downstream labels and the axis
 const MARGIN = { top: 54, right: 20, bottom: 12, left: 190 };
 // The target gene and focused peak use the theme's primary color (--pdw-primary), read
@@ -822,7 +823,9 @@ function drawLinkArcs(svg, x, top, width, v, links, showBand) {
     .attr("height", LINK_ROW_HEIGHT);
 
   const arcPath = (l) => {
-    const x2 = x(linkMid(l));
+    // Peaks at the TSS (promoters) still get a small visible arc
+    const dx = x(linkMid(l)) - tssX;
+    const x2 = tssX + (Math.abs(dx) < MIN_ARC_WIDTH ? Math.sign(dx || 1) * MIN_ARC_WIDTH : dx);
     const h = Math.min(LINK_ROW_HEIGHT - 16, 8 + Math.abs(x2 - tssX) / 3);
     return `M${tssX},${baseline} Q${(tssX + x2) / 2},${baseline - 2 * h} ${x2},${baseline}`;
   };
