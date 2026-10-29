@@ -168,7 +168,7 @@
 import SegmentedToggle from "../shared/SegmentedToggle.vue";
 import { ref, shallowRef, computed, onBeforeUnmount, watch, nextTick } from "vue";
 import * as d3 from "d3";
-import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
+import { useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
 import {
   SIGNAL_MODES,
@@ -207,8 +207,6 @@ const props = defineProps({
 const emit = defineEmits(["update:Vars", "select-peak", "zoom-peak"]);
 
 const { runWhenActive, observeResize } = useKeepAliveGate();
-const injectedConfig = useDatasetActiveConfig();
-const activeConfig = computed(() => props.config || injectedConfig.value || {});
 
 const FLANK_OPTIONS = [
   { value: 2000, label: "± 2 kb" },
