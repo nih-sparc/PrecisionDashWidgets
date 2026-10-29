@@ -221,10 +221,11 @@ const linkSummary = computed(() => {
   return hidden ? `${base} (${hidden} outside this region — widen it to see them)` : base;
 });
 
+// The gene is shared with the Linked Peaks panel; names compare case-insensitively, as there
 watch(
   () => props.gene,
   (newVal) => {
-    if (newVal && newVal !== selectedGene.value) {
+    if (newVal && newVal.toUpperCase() !== selectedGene.value.toUpperCase()) {
       selectedGene.value = newVal;
       geneSearch.value = newVal;
       if (manager.value) runWhenActive(loadRegion);
