@@ -97,7 +97,10 @@
                   : columnInfo('link_type').rule || ''
               "
             >
-              <span :class="{ calc: columnInfo('link_type').computed }">Type:</span>
+              <span
+                :class="{ calc: columnInfo('link_type').computed }"
+                v-quick-tip="columnInfo('link_type').computed ? columnInfo('link_type').rule : null"
+              >Type:</span>
               <label
                 v-for="t in LINK_TYPES"
                 :key="t.value"
@@ -191,13 +194,13 @@
                     >
                       Location<span v-if="links[0]" class="muted"> ({{ links[0].chrom }})</span>{{ sortMark("position") }}
                     </th>
-                    <th :class="{ calc: columnInfo('link_type').computed }" :title="columnInfo('link_type').rule">
+                    <th :class="{ calc: columnInfo('link_type').computed }" v-quick-tip="columnInfo('link_type').rule">
                       Type
                     </th>
                     <th
                       @click="sortBy = 'distance'"
                       :class="{ sorted: sortBy === 'distance', calc: columnInfo('distance_to_tss').computed }"
-                      :title="columnInfo('distance_to_tss').rule || 'Distance from the gene start, in the gene\'s direction'"
+                      v-quick-tip="columnInfo('distance_to_tss').rule || 'Distance from the gene start, in the gene\'s direction'"
                     >
                       Distance{{ sortMark("distance") }}
                     </th>
@@ -207,18 +210,18 @@
                         sorted: sortBy === 'strength' || sortBy === 'correlation',
                         calc: columnInfo('correlation').computed,
                       }"
-                      :title="methodNote"
+                      v-quick-tip="methodNote"
                     >
                       r{{ sortMark("strength", "correlation") }}
                     </th>
                     <th
                       @click="sortBy = 'pValue'"
                       :class="{ sorted: sortBy === 'pValue', calc: columnInfo('p_value').computed }"
-                      :title="methodNote"
+                      v-quick-tip="methodNote"
                     >
                       p-value{{ sortMark("pValue") }}
                     </th>
-                    <th :class="{ calc: columnInfo('top_cell_type').computed }" :title="mostOpenHeaderTitle">
+                    <th :class="{ calc: columnInfo('top_cell_type').computed }" v-quick-tip="mostOpenHeaderTitle">
                       Most open in
                     </th>
                   </tr>
@@ -297,7 +300,7 @@
               How these links were calculated
               <span class="chevron">{{ showAbout ? "▾" : "▸" }}</span>
             </button>
-            <span v-if="anyComputed" class="calc-key" :title="methodNote">
+            <span v-if="anyComputed" class="calc-key" v-quick-tip="methodNote">
               <span class="calc">Purple</span> = calculated, not in the submitted data (hover for how)
             </span>
             <button
@@ -382,6 +385,7 @@ import {
   formatPValue,
 } from "./linkedPeaks.js";
 import { mostOpenByPeak, peakKey, formatSignal } from "../shared/chromatinSignal.js";
+import { vQuickTip } from "../shared/quickTip.js";
 
 const MISSING_LINK_NOTE =
   "A missing link doesn't mean a region isn't regulatory; weak or cell-type-specific relationships often don't reach significance across all cells.";

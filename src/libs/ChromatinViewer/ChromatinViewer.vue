@@ -53,7 +53,7 @@
               </div>
             </label>
 
-            <label class="label" title="How much of the genome around the gene to show">
+            <label class="label inline" title="How much of the genome around the gene to show">
               Region:
               <select v-model="flank" class="select">
                 <option
@@ -84,13 +84,13 @@
           </div>
 
           <div class="control-row">
-            <label class="label" :title="currentSignal.title">
+            <label class="label inline" :title="currentSignal.title">
               <span class="label-text">
                 Signal:
                 <span
                   v-if="signalMode === 'rpm'"
                   class="calc-badge"
-                  :title="`${SIGNAL_MODES[0].title} Reads in peaks per cell: ${depth?.readsColumn}.`"
+                  v-quick-tip="`${SIGNAL_MODES[0].title} Reads in peaks per cell: ${depth?.readsColumn}.`"
                 >Calc</span>
               </span>
               <select v-model="signalMode" class="select">
@@ -105,7 +105,7 @@
               </select>
             </label>
 
-            <label class="label" title="Which cell types' tracks come first">
+            <label class="label inline" title="Which cell types' tracks come first">
               Order:
               <select v-model="trackOrder" class="select">
                 <option v-for="opt in ORDER_OPTIONS" :key="opt.value" :value="opt.value" :title="opt.title">
@@ -118,7 +118,7 @@
               Scale:
               <SegmentedToggle v-model="trackScale" aria-label="Track scale" :options="SCALE_OPTIONS" />
             </div>
-            <div class="label">
+            <div class="label inline">
               Tracks:
               <SegmentedToggle v-model="trackHeight" aria-label="Track height" :options="HEIGHT_OPTIONS" />
             </div>
@@ -209,6 +209,7 @@ import { ref, shallowRef, computed, onBeforeUnmount, watch, nextTick } from "vue
 import * as d3 from "d3";
 import { useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
+import { vQuickTip } from "../shared/quickTip.js";
 import {
   SIGNAL_MODES,
   readsPerMillion,
@@ -312,7 +313,7 @@ const TRACK_GAP = 4;
 // The target gene's lane has room for the TSS arrow; other genes' lanes are shorter
 const GENE_LANE_HEIGHT = 52;
 const OTHER_LANE_HEIGHT = 40;
-const LINK_ROW_HEIGHT = 64;
+const LINK_ROW_HEIGHT = 56;
 const MIN_ARC_WIDTH = 8;
 const MIN_PEAK_WIDTH = 4;
 // Top margin holds the upstream/downstream labels and the axis. The left margin holds the
@@ -1848,11 +1849,21 @@ function formatBp(value) {
     gap: 10px;
   }
 
-  /* Label above its control */
-  .controls .label {
+  /* Label above its control, or beside it when both fit on a line */
+  .controls .label:not(.inline) {
     flex-direction: column;
     align-items: stretch;
     gap: 4px;
+  }
+
+  .controls .label.inline > :first-child:not(select) {
+    flex-shrink: 0;
+  }
+
+  .controls .label.inline .select {
+    flex: 1;
+    width: 0;
+    min-width: 0;
   }
 
   .controls .gene-input {
