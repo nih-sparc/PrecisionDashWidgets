@@ -1309,21 +1309,21 @@ function corrWidth(r) {
     max-height: 100%;
     overflow-y: auto;
     box-sizing: border-box;
-    padding: 10px;
-    gap: 10px;
+    padding: 8px 10px;
+    gap: 6px;
   }
 
   .control-row {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: 6px;
   }
 
   /* Label above its control, except short ones that fit on a line */
   .controls .label:not(.inline) {
     flex-direction: column;
     align-items: stretch;
-    gap: 4px;
+    gap: 2px;
   }
 
   .controls .label.inline {
