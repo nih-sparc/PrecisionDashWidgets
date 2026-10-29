@@ -54,8 +54,13 @@
 
           <label class="label">
             Region around gene:
-            <select v-model.number="flank" class="select">
-              <option v-for="opt in FLANK_OPTIONS" :key="opt.value" :value="opt.value">
+            <select v-model="flank" class="select">
+              <option
+                v-for="opt in FLANK_OPTIONS"
+                :key="opt.value"
+                :value="opt.value"
+                :disabled="opt.value === 'links' && !available.links"
+              >
                 {{ opt.label }}
               </option>
             </select>
@@ -160,7 +165,14 @@ const FLANK_OPTIONS = [
   { value: 50000, label: "± 50 kb" },
   { value: 100000, label: "± 100 kb" },
   { value: 250000, label: "± 250 kb" },
+  // LinkPeaks searches ±500 kb from the TSS; ~30% of links are beyond 250 kb
+  { value: 500000, label: "± 500 kb" },
+  { value: "links", label: "All linked peaks" },
 ];
+// "All linked peaks": padding around the outermost link, and the region used when the gene
+// has none
+const LINKS_PADDING = 5000;
+const NO_LINKS_FLANK = 50000;
 
 // Tracks are precomputed per cell type only; other groupings need processor support
 const GROUP_OPTIONS = [
@@ -218,7 +230,7 @@ const linkSummary = computed(() => {
   const shown = links.filter((l) => l.end >= view.value.start && l.start <= view.value.end);
   const hidden = links.length - shown.length;
   const base = `${links.length} linked peak${links.length === 1 ? "" : "s"}`;
-  return hidden ? `${base} (${hidden} outside this region — widen it to see them)` : base;
+  return hidden ? `${base} (${hidden} outside this region — choose "All linked peaks" to see them)` : base;
 });
 
 // The gene is shared with the Linked Peaks panel; names compare case-insensitively, as there
@@ -367,14 +379,19 @@ async function loadRegion() {
       draw();
       return;
     }
+    const links = available.value.links ? await manager.value.getLinkedPeaks(gene.name) : [];
+    if (seq !== loadSeq) return;
+    let { start, end } = regionAround(gene, links);
     // Widen past the chosen region size if needed so a focused peak is visible
     const f = focusForGene(gene);
-    const start = Math.max(0, Math.min(gene.start - flank.value, f ? f.start - FOCUS_PADDING : Infinity));
-    const end = Math.max(gene.end + flank.value, f ? f.end + FOCUS_PADDING : -Infinity);
-    const [genes, signal, links] = await Promise.all([
+    if (f) {
+      start = Math.min(start, f.start - FOCUS_PADDING);
+      end = Math.max(end, f.end + FOCUS_PADDING);
+    }
+    start = Math.max(0, start);
+    const [genes, signal] = await Promise.all([
       manager.value.getGenesInRegion(gene.chrom, start, end),
       manager.value.getChromatinSignal(gene.chrom, start, end),
-      available.value.links ? manager.value.getLinkedPeaks(gene.name) : [],
     ]);
     if (seq !== loadSeq) return;
     view.value = { gene, chrom: gene.chrom, start, end, genes, signal, links };
@@ -387,6 +404,16 @@ async function loadRegion() {
   } finally {
     if (seq === loadSeq) dataLoading.value = false;
   }
+}
+
+// The gene plus the chosen flank, or every linked peak for "All linked peaks"
+function regionAround(gene, links) {
+  if (flank.value !== "links") return { start: gene.start - flank.value, end: gene.end + flank.value };
+  if (!links.length) return { start: gene.start - NO_LINKS_FLANK, end: gene.end + NO_LINKS_FLANK };
+  return {
+    start: Math.min(gene.start, ...links.map((l) => l.start)) - LINKS_PADDING,
+    end: Math.max(gene.end, ...links.map((l) => l.end)) + LINKS_PADDING,
+  };
 }
 
 function signalValue(d) {
