@@ -85,7 +85,14 @@
 
           <div class="control-row">
             <label class="label" :title="currentSignal.title">
-              Signal:
+              <span class="label-text">
+                Signal:
+                <span
+                  v-if="signalMode === 'rpm'"
+                  class="calc-badge"
+                  :title="`${SIGNAL_MODES[0].title} Reads in peaks per cell: ${depth?.readsColumn}.`"
+                >Calc</span>
+              </span>
               <select v-model="signalMode" class="select">
                 <option
                   v-for="opt in signalOptions"
@@ -96,11 +103,6 @@
                   {{ opt.label }}
                 </option>
               </select>
-              <span
-                v-if="signalMode === 'rpm'"
-                class="calc-badge"
-                :title="`${SIGNAL_MODES[0].title} Reads in peaks per cell: ${depth?.readsColumn}.`"
-              >Calc</span>
             </label>
 
             <label class="label" title="Which cell types' tracks come first">
@@ -112,8 +114,14 @@
               </select>
             </label>
 
-            <SegmentedToggle v-model="trackScale" aria-label="Track scale" :options="SCALE_OPTIONS" />
-            <SegmentedToggle v-model="trackHeight" aria-label="Track height" :options="HEIGHT_OPTIONS" />
+            <div class="label">
+              Scale:
+              <SegmentedToggle v-model="trackScale" aria-label="Track scale" :options="SCALE_OPTIONS" />
+            </div>
+            <div class="label">
+              Tracks:
+              <SegmentedToggle v-model="trackHeight" aria-label="Track height" :options="HEIGHT_OPTIONS" />
+            </div>
 
             <label
               class="checkbox-label"
@@ -306,6 +314,7 @@ const GENE_LANE_HEIGHT = 52;
 const OTHER_LANE_HEIGHT = 40;
 const LINK_ROW_HEIGHT = 64;
 const MIN_ARC_WIDTH = 8;
+const MIN_PEAK_WIDTH = 4;
 // Top margin holds the upstream/downstream labels and the axis. The left margin holds the
 // row labels and is sized to them on each draw (fitLeftMargin).
 const MARGIN = { top: 50, right: 16, bottom: 12, left: 150 };
@@ -993,8 +1002,8 @@ function drawTracks(svg, x, top, width, v, order) {
       .data(peaks)
       .join("rect")
       .attr("class", "peak")
-      .attr("x", (d) => x(Math.max(d.start, v.start)))
-      .attr("width", (d) => Math.max(1.5, x(Math.min(d.end, v.end)) - x(Math.max(d.start, v.start))))
+      .attr("x", (d) => barX(d, x, v))
+      .attr("width", (d) => barWidth(d, x, v))
       .attr("y", (d) => baseline - Math.min(height - 4, y(signalValue(d))))
       .attr("height", (d) => Math.max(0.5, Math.min(height - 4, y(signalValue(d)))))
       .attr("fill", color(group))
@@ -1008,8 +1017,8 @@ function drawTracks(svg, x, top, width, v, order) {
         .data(peaks.filter((d) => signalValue(d) > yMax))
         .join("rect")
         .attr("class", "clipped")
-        .attr("x", (d) => x(Math.max(d.start, v.start)))
-        .attr("width", (d) => Math.max(1.5, x(Math.min(d.end, v.end)) - x(Math.max(d.start, v.start))))
+        .attr("x", (d) => barX(d, x, v))
+        .attr("width", (d) => barWidth(d, x, v))
         .attr("y", baseline - (height - 4) - 1)
         .attr("height", 3)
         .attr("fill", "#1e293b");
@@ -1039,6 +1048,18 @@ function drawTracks(svg, x, top, width, v, order) {
   } else scaleNote.value = `Tracks: 0–${formatSignal(yMax)} ${unit}, same scale for all`;
 }
 
+// Peaks are 500 bp, under a pixel wide in a large region: draw each at least
+// MIN_PEAK_WIDTH px, centered on the peak
+function barWidth(d, x, v) {
+  return Math.max(MIN_PEAK_WIDTH, x(Math.min(d.end, v.end)) - x(Math.max(d.start, v.start)));
+}
+
+function barX(d, x, v) {
+  const x1 = x(Math.max(d.start, v.start));
+  const x2 = x(Math.min(d.end, v.end));
+  return (x1 + x2) / 2 - barWidth(d, x, v) / 2;
+}
+
 // Vertical guide across the tracks; the hover card lists every track's value there
 function drawHoverGuide(svg, x, top, bottom, width, v, order) {
   const left = MARGIN.left;
@@ -1046,7 +1067,7 @@ function drawHoverGuide(svg, x, top, bottom, width, v, order) {
   const byGroup = d3.group(v.signal, (d) => d.group);
   const unit = SIGNAL_MODES.find((m) => m.key === signalMode.value).unit;
   // Peaks narrower than a few pixels are still picked up near the pointer
-  const tolerance = (3 * (v.end - v.start)) / (right - left);
+  const tolerance = ((MIN_PEAK_WIDTH / 2 + 1) * (v.end - v.start)) / (right - left);
 
   const guide = svg
     .append("line")
@@ -1435,6 +1456,7 @@ function formatBp(value) {
   background: var(--pdw-surface);
   padding: 12px 16px;
   box-sizing: border-box;
+  container-type: inline-size;
 }
 
 
@@ -1446,6 +1468,7 @@ function formatBp(value) {
   flex: 1;
   min-height: 0;
 }
+
 
 .controls {
   display: flex;
@@ -1463,6 +1486,12 @@ function formatBp(value) {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 14px;
+}
+
+.label-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .legend {
@@ -1791,6 +1820,45 @@ function formatBp(value) {
   }
   100% {
     transform: rotate(360deg);
+  }
+}
+
+/* Wide (e.g. full width above the links table): controls in a column left of the chart,
+   so the chart gets the height */
+@container (min-width: 1000px) {
+  .content-layout {
+    flex-direction: row;
+    gap: 12px;
+  }
+
+  .controls {
+    width: 250px;
+    flex-shrink: 0;
+    align-self: flex-start;
+    max-height: 100%;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .control-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  /* Label above its control */
+  .controls .label {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .controls .gene-input {
+    flex: 1;
+    width: 0;
+    min-width: 0;
   }
 }
 </style>

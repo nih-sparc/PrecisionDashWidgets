@@ -59,21 +59,23 @@
               @submit.prevent="lookUpPosition"
             >
               Find position:
-              <input
-                v-model="positionQuery"
-                type="text"
-                class="gene-input position-input"
-                placeholder="chr3:38,816,400"
-                aria-label="Genomic position (hg38)"
-              />
-              <button type="submit" class="pdw-btn small-btn" :disabled="!positionQuery.trim()">
-                Find
-              </button>
+              <div class="gene-input-wrapper">
+                <input
+                  v-model="positionQuery"
+                  type="text"
+                  class="gene-input position-input"
+                  placeholder="chr3:38,816,400"
+                  aria-label="Genomic position (hg38)"
+                />
+                <button type="submit" class="pdw-btn small-btn" :disabled="!positionQuery.trim()">
+                  Find
+                </button>
+              </div>
             </form>
           </div>
 
           <div class="control-row">
-            <label class="label" title="Hide links weaker than this">
+            <label class="label inline" title="Hide links weaker than this">
               |r| ≥ <strong class="value">{{ minAbsCorrelation.toFixed(2) }}</strong>
               <input
                 v-model.number="minAbsCorrelation"
@@ -88,7 +90,7 @@
             <SegmentedToggle v-model="direction" aria-label="Link direction" :options="DIRECTIONS" />
 
             <div
-              class="label"
+              class="label inline"
               :title="
                 links.length && !typesAvailable
                   ? 'Link types aren\'t available for this dataset. Reprocess it to add them.'
@@ -775,7 +777,9 @@ function corrWidth(r) {
   background: var(--pdw-surface);
   padding: 12px 16px;
   box-sizing: border-box;
+  container-type: inline-size;
 }
+
 
 
 
@@ -1281,6 +1285,54 @@ function corrWidth(r) {
   }
   100% {
     transform: rotate(360deg);
+  }
+}
+
+/* Wide (e.g. full width under the chromatin view): controls in a column left of the table,
+   so the table gets the height. Matches the chromatin view. */
+@container (min-width: 1000px) {
+  .content-layout {
+    flex-direction: row;
+    gap: 12px;
+  }
+
+  .controls {
+    width: 250px;
+    flex-shrink: 0;
+    align-self: flex-start;
+    max-height: 100%;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .control-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  /* Label above its control, except short ones that fit on a line */
+  .controls .label:not(.inline) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .controls .label.inline {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .controls .gene-input {
+    flex: 1;
+    width: 0;
+    min-width: 0;
+  }
+
+  .controls .slider {
+    flex: 1;
   }
 }
 </style>
