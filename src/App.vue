@@ -9,6 +9,7 @@ import {
   ProportionPlot,
   ChromatinAccessibility,
   LinkedPeaks,
+  ChromatinLinks,
 } from "./components/index";
 import { useViewerAssets } from "@pennsieve-viz/core";
 import { useDatasetConfig } from "./composables/useDatasetConfig.js";
@@ -20,6 +21,7 @@ const RawGeneXDistribution = markRaw(GeneXDistribution);
 const RawProportionPlot = markRaw(ProportionPlot);
 const RawChromatinAccessibility = markRaw(ChromatinAccessibility);
 const RawLinkedPeaks = markRaw(LinkedPeaks);
+const RawChromatinLinks = markRaw(ChromatinLinks);
 
 // --- Pennsieve config ---
 // Published datasets only: assets come from the public discover endpoint, no token.
@@ -100,6 +102,7 @@ const availableWidgets = [
   { name: "ProportionPlot", component: RawProportionPlot },
   { name: "ChromatinAccessibility", component: RawChromatinAccessibility },
   { name: "LinkedPeaks", component: RawLinkedPeaks },
+  { name: "ChromatinLinks", component: RawChromatinLinks },
 ];
 
 // Dashboard options are now computed to react to config changes
@@ -206,29 +209,15 @@ const dashboardOptions = computed(() => {
   const chromatinDash = {
     defaultLayout: [
       {
-        // Full width: wider tracks and arcs; the links table goes underneath
-        id: "ChromatinAccessibility-1",
+        // Chromatin view with its linked peaks table underneath, in one widget
+        id: "ChromatinLinks-1",
         x: 0,
         y: 0,
         w: 12,
-        h: 9,
-        componentKey: "ChromatinAccessibility",
-        componentName: "Chromatin Accessibility",
-        component: RawChromatinAccessibility,
-        Props: {
-          initialGene: genes.chromatin || "SCN10A",
-          config: cfg,
-        },
-      },
-      {
-        id: "LinkedPeaks-1",
-        x: 0,
-        y: 9,
-        w: 12,
-        h: 7,
-        componentKey: "LinkedPeaks",
-        componentName: "Linked Peaks",
-        component: RawLinkedPeaks,
+        h: 13,
+        componentKey: "ChromatinLinks",
+        componentName: "Chromatin Accessibility & Linked Peaks",
+        component: RawChromatinLinks,
         Props: {
           initialGene: genes.chromatin || "SCN10A",
           config: cfg,

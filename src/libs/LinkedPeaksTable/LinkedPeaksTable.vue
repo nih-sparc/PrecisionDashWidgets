@@ -28,7 +28,7 @@
         <!-- Controls: what to look at, then which links to show -->
         <div class="controls">
           <div class="control-row">
-            <label class="label gene-expression-label">
+            <label v-if="showGeneInput" class="label gene-expression-label">
               Gene
               <div class="gene-input-wrapper">
                 <input
@@ -399,6 +399,8 @@ const props = defineProps({
   focusedPeak: { type: Object, default: null },
   // Filters shared with the chromatin view's arcs; without them the table keeps its own
   linkFilters: { type: Object, default: null },
+  // Off when the gene is picked elsewhere (the combined chromatin + links widget)
+  showGeneInput: { type: Boolean, default: true },
   config: { type: Object, default: null },
 });
 
@@ -1303,7 +1305,7 @@ function corrWidth(r) {
   }
 
   .controls {
-    width: 250px;
+    width: 270px;
     flex-shrink: 0;
     align-self: flex-start;
     max-height: 100%;

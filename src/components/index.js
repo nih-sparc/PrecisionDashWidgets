@@ -7,6 +7,8 @@ export { default as GeneXDistribution } from "./GeneDistribution/GeneXDistributi
 export { default as ViolinPlot } from "./GeneDistribution/GeneXDistribution.vue";
 export { default as ChromatinAccessibility } from "./ChromatinAccessibility/ChromatinAccessibility.vue";
 export { default as LinkedPeaks } from "./LinkedPeaks/LinkedPeaks.vue";
+// Chromatin view and linked peaks table in one widget
+export { default as ChromatinLinks } from "./ChromatinLinks/ChromatinLinks.vue";
 export { usePrecisionStore } from "../stores/precisionVars";
 export {
   useDashboardGlobalVars,
