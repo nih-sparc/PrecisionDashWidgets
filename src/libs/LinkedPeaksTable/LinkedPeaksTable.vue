@@ -9,6 +9,7 @@
     <!-- Error State -->
     <div v-else-if="error" class="error-container">
       <strong>Error:</strong> {{ error }}
+      <button type="button" class="pdw-btn retry-btn" @click="retryLoad">Retry</button>
     </div>
 
     <!-- Empty State: dataset has no link data -->
@@ -391,6 +392,7 @@ const MISSING_LINK_NOTE =
   "A missing link doesn't mean a region isn't regulatory; weak or cell-type-specific relationships often don't reach significance across all cells.";
 
 const TRACKS_FILE = "chromatin_tracks.parquet";
+const LINKS_FILE = "linked_peaks.parquet";
 
 const props = defineProps({
   dataPath: { type: String, default: "/data" },
@@ -527,6 +529,8 @@ async function initWithViewer(viewerInstance) {
     stopTracksListener?.();
     stopTracksListener = viewerInstance.onChromatinFileLoaded((name) => {
       if (name === TRACKS_FILE) updateMostOpen();
+      // The chromatin view's Retry downloaded the links this table failed to get
+      if (name === LINKS_FILE && error.value) retryLoad();
     });
     hasLinksFile.value = await viewerInstance.loadLinkedPeaks();
     loading.value = false;
@@ -539,7 +543,7 @@ async function initWithViewer(viewerInstance) {
 }
 
 // Shared engine: the provider's, or one per data URL shared with the other widgets
-useWidgetDataEngine({
+const dataEngine = useWidgetDataEngine({
   dataPath: () => props.dataPath,
   config: () => props.config,
   onReady: initWithViewer,
@@ -548,6 +552,14 @@ useWidgetDataEngine({
     loading.value = false;
   },
 });
+
+// Retry after a failed load: the dataset itself if it never loaded, else this view's data
+function retryLoad() {
+  error.value = null;
+  loading.value = true;
+  if (manager.value) initWithViewer(manager.value);
+  else dataEngine.retry();
+}
 
 onBeforeUnmount(() => {
   if (searchTimeout) clearTimeout(searchTimeout);
@@ -1342,5 +1354,9 @@ function corrWidth(r) {
   .controls .slider {
     flex: 1;
   }
+}
+
+.retry-btn {
+  margin-left: 12px;
 }
 </style>

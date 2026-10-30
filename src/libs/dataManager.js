@@ -6,6 +6,11 @@ import { buildSignedUrl, getSharedDuckDB } from "@pennsieve-viz/core";
 // drops files instead of restarting DuckDB.
 let viewerCount = 0;
 
+// Waits between download attempts. Covers a network that drops for a few seconds (a laptop
+// waking up, Wi-Fi or VPN reconnecting) and credentials renewed while a request was out.
+const RETRY_DELAYS_MS = [1000, 3000, 8000];
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /** Start booting the shared DuckDB now (~1 s) so it's ready when the data arrives. */
 export function preloadDuckDB() {
   getSharedDuckDB(duckdb).catch(() => {}); // a failure resurfaces when a viewer needs it
@@ -57,6 +62,34 @@ export class UMAPGeneViewer {
     const file = this._file(name);
     await this.db.registerFileBuffer(file, bytes);
     this._files.add(file);
+  }
+
+  /**
+   * Download a data file, retrying network errors and failed responses. Each attempt is
+   * signed with the credentials current at that moment, so renewed ones are picked up.
+   * `mayBeMissing`: the file is optional; 403/404 mean it isn't there (CloudFront answers a
+   * missing file with 403 too) and resolve to null instead of retrying.
+   * Rejects once the retries are used up, so callers can tell "couldn't download" from
+   * "doesn't exist".
+   */
+  async _download(remoteName, { mayBeMissing = false } = {}) {
+    for (let attempt = 0; ; attempt++) {
+      let reason;
+      try {
+        const response = await fetch(this._buildUrl(remoteName));
+        if (response.ok) return new Uint8Array(await response.arrayBuffer());
+        if (mayBeMissing && (response.status === 403 || response.status === 404)) return null;
+        reason = `HTTP ${response.status}`;
+        if (response.status === 404) attempt = RETRY_DELAYS_MS.length; // won't appear on retry
+      } catch (error) {
+        reason = `network error: ${error.message}`;
+      }
+      if (attempt >= RETRY_DELAYS_MS.length) {
+        throw new Error(`Couldn't download ${remoteName} (${reason})`);
+      }
+      console.warn(`[DataEngine] ${remoteName}: ${reason}, retrying`);
+      await sleep(RETRY_DELAYS_MS[attempt]);
+    }
   }
 
   // Backward-compat accessors
@@ -123,15 +156,22 @@ export class UMAPGeneViewer {
       { name: "gene_locations.parquet", required: true },
       { name: "gene_stats.parquet", required: true },
       { name: "cells.parquet", required: true },
-      { name: "metadata.parquet", required: false },
       { name: "genes.parquet", required: true },
-    ].map((f) => ({ ...f, path: this._buildUrl(f.name) }));
+    ].map((f) => ({ ...f, source: f.name }));
     const fixedDownloads = fixedFiles.map((f) => this._fetchFile(f));
     fixedDownloads.forEach((d) => d.catch(() => {})); // surfaced by Promise.all below
 
     // Without embeddings from config, read them from the dataset's manifest
     if (!this.config?.embeddings?.length) {
       await this._loadManifest();
+    }
+
+    // metadata.parquet is optional; skip the request when the manifest says there isn't one
+    const listedFiles = this.config?.files || this.manifest?.files;
+    if (!listedFiles || Object.values(listedFiles).includes("metadata.parquet")) {
+      const metadata = { name: "metadata.parquet", source: "metadata.parquet", required: false };
+      fixedFiles.push(metadata);
+      fixedDownloads.push(this._fetchFile(metadata));
     }
 
     // Build the list of reduction files from config or defaults.
@@ -199,17 +239,9 @@ export class UMAPGeneViewer {
   /** Download a file. Returns its bytes, or null if an optional file is missing. */
   async _fetchFile(file) {
     try {
-      const response = await fetch(file.path);
-      if (!response.ok) {
-        if (file.required) {
-          throw new Error(
-            `Failed to load required file: ${file.name} (${response.status} ${response.statusText})`
-          );
-        }
-        console.log(`Optional file ${file.name} not available, skipping...`);
-        return null;
-      }
-      return new Uint8Array(await response.arrayBuffer());
+      const bytes = await this._download(file.source, { mayBeMissing: !file.required });
+      if (!bytes) console.log(`Optional file ${file.name} not available, skipping...`);
+      return bytes;
     } catch (error) {
       if (file.required) throw error;
       console.log(`Optional file ${file.name} not available:`, error.message);
@@ -251,8 +283,8 @@ export class UMAPGeneViewer {
   /** Fetch manifest.json next to the data files. Optional: older datasets have none. */
   async _loadManifest() {
     try {
-      const response = await fetch(this._buildUrl("manifest.json"));
-      if (response.ok) this.manifest = await response.json();
+      const bytes = await this._download("manifest.json", { mayBeMissing: true });
+      if (bytes) this.manifest = JSON.parse(new TextDecoder().decode(bytes));
     } catch (error) {
       console.log("manifest.json not available:", error.message);
     }
@@ -274,7 +306,7 @@ export class UMAPGeneViewer {
         .filter((emb) => !seen.has(emb.key) && seen.add(emb.key))
         .map((emb) => ({
           name: `${emb.key}.parquet`,
-          path: this._buildUrl(emb.file || `${emb.key}_complete.parquet`),
+          source: emb.file || `${emb.key}_complete.parquet`,
           required: emb.required !== false,
           reductionKey: emb.key,
         }));
@@ -284,13 +316,13 @@ export class UMAPGeneViewer {
     return [
       {
         name: "umap.parquet",
-        path: this._buildUrl("umap_complete.parquet"),
+        source: "umap_complete.parquet",
         required: true,
         reductionKey: "umap",
       },
       {
         name: "tsne.parquet",
-        path: this._buildUrl("tsne_complete.parquet"),
+        source: "tsne_complete.parquet",
         required: false,
         reductionKey: "tsne",
       },
@@ -500,18 +532,13 @@ export class UMAPGeneViewer {
 
       if (isPrecomputed) {
         // Load individual gene file (fast!)
-        const response = await fetch(this._buildUrl(location));
-        if (!response.ok) {
-          throw new Error(`Failed to load gene file: ${response.statusText}`);
-        }
-
-        const buffer = await response.arrayBuffer();
+        const buffer = await this._download(location);
         const tempFileName = `gene_${geneName.replace(
           /[^a-zA-Z0-9]/g,
           "_"
         )}.parquet`;
 
-        await this._register(tempFileName, new Uint8Array(buffer));
+        await this._register(tempFileName, buffer);
 
         const result = await this.conn.query(`
           SELECT cell_id, expression FROM "${this._file(tempFileName)}"
@@ -547,12 +574,7 @@ export class UMAPGeneViewer {
     if (!this._chunkLoads) this._chunkLoads = new Map();
     if (!this._chunkLoads.has(chunkFileName)) {
       const load = (async () => {
-        const response = await fetch(this._buildUrl(location));
-        if (!response.ok) {
-          throw new Error(`Failed to load chunk file: ${response.statusText}`);
-        }
-        const buffer = await response.arrayBuffer();
-        await this._register(chunkFileName, new Uint8Array(buffer));
+        await this._register(chunkFileName, await this._download(location));
       })();
       // Let a failed download be retried
       load.catch(() => this._chunkLoads.delete(chunkFileName));
@@ -602,12 +624,18 @@ export class UMAPGeneViewer {
     if (!this._chromatinFiles.has(name)) {
       // Skip files the manifest says are missing; without a manifest, try anyway
       const listed = this.chromatinInfo?.[manifestFlag];
-      const load = listed === false ? Promise.resolve(false) : this._registerOptional(name);
-      load.then((ok) => {
-        if (!ok) return;
-        this._loadedChromatinFiles.add(name);
-        this._chromatinListeners.forEach((fn) => fn(name));
-      });
+      const load = listed === false ? Promise.resolve(false) : this._registerOptional(name, listed);
+      load.then(
+        (ok) => {
+          if (!ok) return;
+          this._loadedChromatinFiles.add(name);
+          this._chromatinListeners.forEach((fn) => fn(name));
+        },
+        // Couldn't download (network, access): forget it so the next view tries again
+        () => {
+          if (this._chromatinFiles.get(name) === load) this._chromatinFiles.delete(name);
+        }
+      );
       this._chromatinFiles.set(name, load);
     }
     return this._chromatinFiles.get(name);
@@ -627,18 +655,18 @@ export class UMAPGeneViewer {
     return () => this._chromatinListeners.delete(fn);
   }
 
-  async _registerOptional(name) {
-    try {
-      const response = await fetch(this._buildUrl(name));
-      if (!response.ok) return false;
-      const buffer = await response.arrayBuffer();
-      await this._register(name, new Uint8Array(buffer));
-      return true;
-    } catch (error) {
-      console.log(`Optional file ${name} not available:`, error.message);
-      return false;
-    }
+  /**
+   * Download and register a chromatin file. Resolves false when the dataset doesn't have
+   * it; rejects when it couldn't be downloaded. A file the manifest lists (`listed`) is
+   * never treated as missing, so an expired link or dropped connection shows as an error.
+   */
+  async _registerOptional(name, listed) {
+    const bytes = await this._download(name, { mayBeMissing: listed !== true });
+    if (!bytes) return false;
+    await this._register(name, bytes);
+    return true;
   }
+
 
   /** Gene location with exons as [[start, end], ...], or null if not annotated. */
   async getGeneCoordinates(geneName) {

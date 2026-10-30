@@ -117,6 +117,7 @@
       <!-- Error -->
       <div v-if="error" class="error-panel">
         <strong>⚠️ Error:</strong> {{ error }}
+        <button v-if="!viewer" type="button" class="pdw-btn" @click="retryLoad">Retry</button>
         <button @click="error = null" class="dismiss-btn">Dismiss</button>
       </div>
 
@@ -520,6 +521,7 @@ async function initWithViewer(viewerInstance) {
     viewer.value = viewerInstance;
     reductionOptions.value = viewer.value.getReductionOptions();
     stopReductionUpdates?.();
+    stopReductionUpdates?.(); // set up again on Retry
     stopReductionUpdates = viewer.value.onReductionsChange?.(() => {
       reductionOptions.value = viewer.value.getReductionOptions();
     });
@@ -549,7 +551,7 @@ async function initWithViewer(viewerInstance) {
 }
 
 // Shared engine: the provider's, or one per data URL shared with the other widgets
-useWidgetDataEngine({
+const dataEngine = useWidgetDataEngine({
   dataPath: () => props.dataPath,
   config: () => props.config,
   onReady: initWithViewer,
@@ -558,6 +560,14 @@ useWidgetDataEngine({
     loading.value = false;
   },
 });
+
+// Retry after a failed load: the dataset itself if it never loaded, else this view's data
+function retryLoad() {
+  error.value = null;
+  loading.value = true;
+  if (viewer.value) initWithViewer(viewer.value);
+  else dataEngine.retry();
+}
 
 onBeforeUnmount(() => {
   stopReductionUpdates?.();
@@ -669,6 +679,7 @@ function hexToRgb(hex) {
 function setupResizeObserver() {
   const container = chartCanvas.value?.parentElement?.parentElement; // chart-container -> inner wrapper -> canvas
   if (!container) return;
+  resizeObserver.value?.disconnect();
   resizeObserver.value = observeResize(container, async () => {
     if (!chartCanvas.value || !showChart.value) return;
     await renderChart(); // re-render on container size change

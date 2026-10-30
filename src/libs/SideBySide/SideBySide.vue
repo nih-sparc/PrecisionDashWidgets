@@ -9,6 +9,7 @@
     <!-- Error State -->
     <div v-else-if="error" class="error-container">
       <strong>⚠️ Error:</strong> {{ error }}
+      <button type="button" class="pdw-btn retry-btn" @click="retryLoad">Retry</button>
     </div>
 
     <!-- Main Dashboard -->
@@ -416,6 +417,7 @@ async function initWithViewer(viewerInstance) {
 
     reductionOptions.value = manager.value.getReductionOptions();
     stopReductionUpdates?.();
+    stopReductionUpdates?.(); // set up again on Retry
     stopReductionUpdates = manager.value.onReductionsChange?.(() => {
       reductionOptions.value = manager.value.getReductionOptions();
     });
@@ -464,7 +466,7 @@ async function initWithViewer(viewerInstance) {
 }
 
 // Shared engine: the provider's, or one per data URL shared with the other widgets
-useWidgetDataEngine({
+const dataEngine = useWidgetDataEngine({
   dataPath: () => props.dataPath,
   config: () => props.config,
   onReady: initWithViewer,
@@ -473,6 +475,14 @@ useWidgetDataEngine({
     loading.value = false;
   },
 });
+
+// Retry after a failed load: the dataset itself if it never loaded, else this view's data
+function retryLoad() {
+  error.value = null;
+  loading.value = true;
+  if (manager.value) initWithViewer(manager.value);
+  else dataEngine.retry();
+}
 
 onBeforeUnmount(() => {
   stopReductionUpdates?.();
@@ -485,6 +495,8 @@ onBeforeUnmount(() => {
 });
 // Setup resize observers
 function setupResizeObservers() {
+  leftResizeObserver.value?.disconnect();
+  rightResizeObserver.value?.disconnect();
   if (leftCanvas.value) {
     // Observe the panel instead of the canvas container
     leftResizeObserver.value = observeResize(leftCanvas.value.closest(".panel"), () => {
@@ -2236,6 +2248,10 @@ function formatValue(key, value) {
   100% {
     transform: rotate(360deg);
   }
+}
+
+.retry-btn {
+  margin-left: 12px;
 }
 </style>
 ../dataManager

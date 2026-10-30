@@ -9,6 +9,7 @@
     <!-- Error State -->
     <div v-else-if="error" class="error-container">
       <strong>� Error:</strong> {{ error }}
+      <button type="button" class="pdw-btn retry-btn" @click="retryLoad">Retry</button>
     </div>
 
     <!-- Main Dashboard -->
@@ -273,7 +274,7 @@ onMounted(() => {
 });
 
 // Shared engine: the provider's, or one per data URL shared with the other widgets
-useWidgetDataEngine({
+const dataEngine = useWidgetDataEngine({
   dataPath: () => props.dataPath,
   config: () => props.config,
   onReady: initWithViewer,
@@ -282,6 +283,14 @@ useWidgetDataEngine({
     loading.value = false;
   },
 });
+
+// Retry after a failed load: the dataset itself if it never loaded, else this view's data
+function retryLoad() {
+  error.value = null;
+  loading.value = true;
+  if (manager.value) initWithViewer(manager.value);
+  else dataEngine.retry();
+}
 
 onBeforeUnmount(() => {
   if (searchTimeout) clearTimeout(searchTimeout);
@@ -1033,6 +1042,10 @@ function updateDataPoints() {
   100% {
     transform: rotate(360deg);
   }
+}
+
+.retry-btn {
+  margin-left: 12px;
 }
 </style>
 ../dataManager
