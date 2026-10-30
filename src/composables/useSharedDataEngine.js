@@ -30,9 +30,12 @@ export const DATASET_CONFIG_KEY = Symbol("dataset-config");
  * the dataset's manifest and takes its embeddings from `config` instead of
  * fetching manifest.json a second time.
  *
- * @param {{ dataUrl: Ref<string|null>, config: Ref<object>, configLoading?: Ref<boolean>, getCloudfront?: () => object|null }} options
+ * `renewCloudfront` renews the credentials now (useViewerAssets' `refresh`); downloads use
+ * it when the credentials have expired.
+ *
+ * @param {{ dataUrl: Ref<string|null>, config: Ref<object>, configLoading?: Ref<boolean>, getCloudfront?: () => object|null, renewCloudfront?: () => Promise<unknown> }} options
  */
-export function useSharedDataEngine({ dataUrl, config, configLoading, getCloudfront }) {
+export function useSharedDataEngine({ dataUrl, config, configLoading, getCloudfront, renewCloudfront }) {
   const dataUrlRef = isRef(dataUrl) ? dataUrl : toRef(dataUrl);
   const configRef = isRef(config) ? config : toRef(config);
 
@@ -59,6 +62,7 @@ export function useSharedDataEngine({ dataUrl, config, configLoading, getCloudfr
     const cfg = configRef.value;
     return {
       getCloudfront,
+      renewCloudfront,
       // Embeddings and chromatin settings from the manifest, when there is one
       ...(cfg?.embeddings && { embeddings: cfg.embeddings, default_embedding: cfg.default_embedding }),
       ...(cfg?.chromatin && { chromatin: cfg.chromatin }),
@@ -132,6 +136,16 @@ export function useServicesCloudfront() {
 }
 
 /**
+ * Renews the credentials now, through the host's optional `services.refreshCloudfront`
+ * (useViewerAssets' `refresh`). Data downloads call it when the credentials have expired
+ * or a file comes back 403. Call during setup.
+ */
+export function useServicesCloudfrontRenew() {
+  const globalVars = inject(DASHBOARD_GLOBAL_VARS_KEY, null);
+  return () => unref(globalVars?.services)?.refreshCloudfront?.();
+}
+
+/**
  * Consumer: inject the dataset config from an ancestor.
  */
 export function useDatasetActiveConfig() {
@@ -187,6 +201,7 @@ function acquireWidgetEngine(url, config) {
 export function useWidgetDataEngine({ dataPath, config, onReady, onError }) {
   const provided = inject(DATA_ENGINE_KEY, null);
   const getCloudfront = useServicesCloudfront();
+  const renewCloudfront = useServicesCloudfrontRenew();
   const mounted = ref(false);
   let active = true;
   let started = false;
@@ -211,7 +226,7 @@ export function useWidgetDataEngine({ dataPath, config, onReady, onError }) {
   });
 
   function acquire(url) {
-    const engine = acquireWidgetEngine(url, { ...(toValue(config) || {}), getCloudfront });
+    const engine = acquireWidgetEngine(url, { ...(toValue(config) || {}), getCloudfront, renewCloudfront });
     release = engine.release;
     engine.viewer.then(start, fail);
   }

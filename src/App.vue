@@ -49,7 +49,7 @@ const selectedPackageId = computed(
   () => datasets.find((d) => d.id === selectedDatasetId.value)?.packageId ?? null
 );
 
-const { assets, cloudfront, loading, error } = useViewerAssets({
+const { assets, cloudfront, refresh: refreshCloudfront, loading, error } = useViewerAssets({
   api2Url: API2_URL,
   packageId: selectedPackageId,
   assetTypes: ["parquet"],
@@ -80,6 +80,7 @@ const {
   config: activeConfig,
   configLoading,
   getCloudfront,
+  renewCloudfront: refreshCloudfront,
 });
 
 // Provide config to descendants
@@ -92,6 +93,7 @@ const services = {
   ApiUrl: "https://api.pennsieve.net",
   s3Url: dataUrl,
   cloudfront,
+  refreshCloudfront,
 };
 
 //name = component key

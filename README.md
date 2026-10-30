@@ -318,6 +318,8 @@ provide(DASHBOARD_GLOBAL_VARS_KEY, {
 
 **Resolution order:** `dataPath` prop > injected `services.s3Url` > built-in default URL.
 
+**Signed data (CloudFront):** pass `services.cloudfront` as a ref that you keep renewed (for example from `useViewerAssets` in `@pennsieve-viz/core`) and `services.refreshCloudfront`, a function that renews it now (`useViewerAssets`' `refresh`). Widgets call `refreshCloudfront` when the credentials have expired or a file comes back 403. Renewal timers pause while a computer sleeps, so without it a page left open overnight can't load new data.
+
 ### Accessing Shared State
 
 If you need to read or control widget selections programmatically, import the Pinia store:

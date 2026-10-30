@@ -1,5 +1,5 @@
 import * as duckdb from "@duckdb/duckdb-wasm";
-import { buildSignedUrl, getSharedDuckDB } from "@pennsieve-viz/core";
+import { buildSignedUrl, cloudfrontExpiryMs, getSharedDuckDB } from "@pennsieve-viz/core";
 
 // Every viewer uses the page's one DuckDB (shared with other libraries through core) and
 // registers its files under its own prefix, so datasets never collide and a switch only
@@ -10,6 +10,8 @@ let viewerCount = 0;
 // waking up, Wi-Fi or VPN reconnecting) and credentials renewed while a request was out.
 const RETRY_DELAYS_MS = [1000, 3000, 8000];
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Credentials this close to expiring are renewed before a download
+const RENEW_BEFORE_EXPIRY_MS = 60 * 1000;
 
 /** Start booting the shared DuckDB now (~1 s) so it's ready when the data arrives. */
 export function preloadDuckDB() {
@@ -76,11 +78,14 @@ export class UMAPGeneViewer {
     for (let attempt = 0; ; attempt++) {
       let reason;
       try {
+        await this._renewIfExpiring();
         const response = await fetch(this._buildUrl(remoteName));
         if (response.ok) return new Uint8Array(await response.arrayBuffer());
         if (mayBeMissing && (response.status === 403 || response.status === 404)) return null;
         reason = `HTTP ${response.status}`;
         if (response.status === 404) attempt = RETRY_DELAYS_MS.length; // won't appear on retry
+        // A 403 for a file that should be there means the credentials stopped working
+        if (response.status === 403 && attempt < RETRY_DELAYS_MS.length) await this._renew();
       } catch (error) {
         reason = `network error: ${error.message}`;
       }
@@ -89,6 +94,25 @@ export class UMAPGeneViewer {
       }
       console.warn(`[DataEngine] ${remoteName}: ${reason}, retrying`);
       await sleep(RETRY_DELAYS_MS[attempt]);
+    }
+  }
+
+  /**
+   * Renew the CloudFront credentials when they expire within RENEW_BEFORE_EXPIRY_MS. The
+   * host renews them on a timer, but timers pause while a computer sleeps, so after a long
+   * sleep the credentials can be expired when someone starts using the page again.
+   */
+  async _renewIfExpiring() {
+    const expiry = cloudfrontExpiryMs(this.config?.getCloudfront?.());
+    if (expiry !== null && expiry - Date.now() < RENEW_BEFORE_EXPIRY_MS) await this._renew();
+  }
+
+  /** Ask the host for new credentials (config.renewCloudfront). A failure leaves the old ones. */
+  async _renew() {
+    try {
+      await this.config?.renewCloudfront?.();
+    } catch (error) {
+      console.warn("[DataEngine] Couldn't renew CloudFront credentials:", error);
     }
   }
 
