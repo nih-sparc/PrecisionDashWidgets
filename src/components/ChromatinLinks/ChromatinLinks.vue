@@ -96,12 +96,13 @@ function handleVarsUpdate(key: string, value: string | null) {
   border-top: 1px solid var(--pdw-border);
 }
 
-// One widget, so the parts sit close together
+// One widget: the line between the parts is its only horizontal divider, with 16px space
+// either side
 .chromatin-part :deep(.dashboard) {
-  padding: 8px 12px 6px;
+  padding: 8px 16px 16px;
 }
 
 .links-part :deep(.dashboard) {
-  padding: 6px 12px 8px;
+  padding: 16px 16px 8px;
 }
 </style>

@@ -35,6 +35,14 @@
   line-height: var(--pdw-line-height);
 }
 
+/* Form controls don't inherit the page font by default; match the rest of the widget */
+.pdw-theme input,
+.pdw-theme button,
+.pdw-theme select,
+.pdw-theme textarea {
+  font-family: inherit;
+}
+
 /* Buttons: secondary by default; primary only for actions that load or change data
    (Visualize, Plot) */
 .pdw-btn {

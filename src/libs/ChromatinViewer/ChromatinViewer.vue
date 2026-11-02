@@ -55,7 +55,7 @@
             </label>
 
             <label class="label inline" title="How much of the genome around the gene to show">
-              Region:
+              Region
               <select v-model="flank" class="select">
                 <option
                   v-for="opt in FLANK_OPTIONS"
@@ -70,7 +70,7 @@
 
             <!-- Only worth showing once the processor writes tracks for more than one grouping -->
             <label v-if="groupChoices > 1" class="label">
-              Group by:
+              Group by
               <select v-model="groupBy" class="select">
                 <option
                   v-for="opt in GROUP_OPTIONS"
@@ -87,7 +87,7 @@
           <div class="control-row">
             <label class="label inline" :title="currentSignal.title">
               <span class="label-text">
-                Signal:
+                Signal
                 <span
                   v-if="signalMode === 'rpm'"
                   class="calc-badge"
@@ -107,7 +107,7 @@
             </label>
 
             <label class="label inline" title="Which cell types' tracks come first">
-              Order:
+              Order
               <select v-model="trackOrder" class="select">
                 <option v-for="opt in ORDER_OPTIONS" :key="opt.value" :value="opt.value" :title="opt.title">
                   {{ opt.label }}
@@ -116,12 +116,12 @@
             </label>
 
             <div class="label">
-              Scale:
+              Scale
               <SegmentedToggle v-model="trackScale" aria-label="Track scale" :options="SCALE_OPTIONS" />
             </div>
             <div class="pair-row">
               <div class="label inline">
-                Tracks:
+                Tracks
                 <SegmentedToggle v-model="trackHeight" aria-label="Track height" :options="HEIGHT_OPTIONS" />
               </div>
 
@@ -1328,7 +1328,6 @@ function drawMarker(g, x, baseline, anchor, label, onClick, onHover) {
     .attr("y", box.y - 1)
     .attr("width", box.width + 8)
     .attr("height", box.height + 2)
-    .attr("rx", 3)
     .attr("fill", "#ffffff")
     .attr("stroke", "#cbd5e1");
   marker.on("mouseenter", onHover).on("mousemove", moveTip).on("mouseleave", hideTipSoon);
@@ -1485,7 +1484,7 @@ function formatBp(value) {
   height: 100%;
   width: 100%;
   background: var(--pdw-surface);
-  padding: 12px 16px;
+  padding: 8px 16px;
   box-sizing: border-box;
   container-type: inline-size;
 }
@@ -1501,14 +1500,12 @@ function formatBp(value) {
 }
 
 
+/* The widget card is the frame: the controls and plot have no borders or backgrounds of
+   their own */
 .controls {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 6px 10px;
-  background: var(--pdw-surface-muted);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
@@ -1516,7 +1513,7 @@ function formatBp(value) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 14px;
+  gap: 8px 16px;
 }
 
 /* Two short controls on one line */
@@ -1524,7 +1521,7 @@ function formatBp(value) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 14px;
+  gap: 8px 16px;
 }
 
 .label-text {
@@ -1542,9 +1539,8 @@ function formatBp(value) {
 
 .swatch {
   display: inline-block;
-  width: 16px;
-  height: 3px;
-  border-radius: 2px;
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
 }
 
@@ -1576,7 +1572,7 @@ function formatBp(value) {
   top: 100%;
   z-index: 25;
   width: 320px;
-  padding: 8px 12px;
+  padding: 8px;
   background: var(--pdw-surface);
   border: 1px solid var(--pdw-border);
   border-radius: var(--pdw-radius);
@@ -1590,7 +1586,7 @@ function formatBp(value) {
 .key-wrap:focus-within .key-panel {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 
 .key-heading {
@@ -1612,23 +1608,17 @@ function formatBp(value) {
 .label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--pdw-text-muted);
-  white-space: nowrap;
-}
-
-.gene-expression-label {
+  gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: var(--pdw-text);
+  color: var(--pdw-text-muted);
+  white-space: nowrap;
 }
 
 .select {
   padding: 4px 8px;
   border: 1px solid #cbd5e1;
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
   font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
@@ -1642,19 +1632,18 @@ function formatBp(value) {
 .select:focus {
   outline: none;
   border-color: var(--pdw-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
 .gene-input-wrapper {
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .gene-input {
   width: 130px;
   padding: 4px 8px;
   border: 1px solid #cbd5e1;
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
   font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
@@ -1673,7 +1662,6 @@ function formatBp(value) {
 .gene-input:focus {
   outline: none;
   border-color: var(--pdw-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
 
@@ -1718,9 +1706,6 @@ function formatBp(value) {
   flex: 1;
   min-width: 0;
   position: relative;
-  background: var(--pdw-surface);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -1730,9 +1715,9 @@ function formatBp(value) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px 2px;
+  padding: 0 0 8px;
   font-size: 14px;
-  color: #475569;
+  color: var(--pdw-text-muted);
   flex-shrink: 0;
 }
 
@@ -1742,14 +1727,14 @@ function formatBp(value) {
 }
 
 .region-label strong {
-  color: var(--pdw-primary);
+  color: var(--pdw-text);
   margin-right: 6px;
 }
 
 .plot-message {
-  padding: 12px;
+  padding: 8px 0;
   font-size: 14px;
-  color: #4b5563;
+  color: var(--pdw-text-muted);
   flex-shrink: 0;
 }
 
@@ -1769,7 +1754,7 @@ function formatBp(value) {
   display: inline-block;
   padding: 0 5px;
   border: 1px solid #c4b5fd;
-  border-radius: 3px;
+  border-radius: var(--pdw-radius);
   background: #f5f3ff;
   color: #6d28d9;
   font-size: 14px;
@@ -1784,7 +1769,7 @@ function formatBp(value) {
   width: max-content;
   max-width: 290px;
   box-sizing: border-box;
-  padding: 6px 10px;
+  padding: 8px;
   background: var(--pdw-surface);
   border: 1px solid var(--pdw-border);
   border-radius: var(--pdw-radius);
@@ -1804,12 +1789,12 @@ function formatBp(value) {
 }
 
 .tip-actions {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .tip-action,
 .back-btn {
-  padding: 2px 10px;
+  padding: 4px 8px;
 }
 
 .back-btn {
@@ -1828,10 +1813,7 @@ function formatBp(value) {
 
 .empty-card {
   max-width: 420px;
-  padding: 24px 28px;
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
-  background: var(--pdw-surface-muted);
+  padding: 16px;
   text-align: center;
 }
 
@@ -1859,7 +1841,7 @@ function formatBp(value) {
 }
 
 .loading-text {
-  margin-top: 20px;
+  margin-top: 16px;
   font-size: 16px;
   color: var(--pdw-text-muted);
 }
@@ -1892,7 +1874,7 @@ function formatBp(value) {
   height: 100%;
   background: #fff3cd;
   border: 1px solid #ffc107;
-  padding: 20px;
+  padding: 16px;
   color: #856404;
 }
 
@@ -1906,35 +1888,36 @@ function formatBp(value) {
 }
 
 /* Wide (e.g. full width above the links table): controls in a column left of the chart,
-   so the chart gets the height */
+   so the chart gets the height. One divider line between them, not a bordered box */
 @container (min-width: 1000px) {
   .content-layout {
     flex-direction: row;
-    gap: 12px;
+    gap: 16px;
   }
 
   .controls {
     width: 270px;
     flex-shrink: 0;
-    align-self: flex-start;
+    align-self: stretch;
     max-height: 100%;
     overflow-y: auto;
     box-sizing: border-box;
-    padding: 8px 10px;
-    gap: 6px;
+    padding-right: 16px;
+    border-right: 1px solid var(--pdw-border);
+    gap: 8px;
   }
 
   .control-row {
     flex-direction: column;
     align-items: stretch;
-    gap: 6px;
+    gap: 8px;
   }
 
   /* Label above its control, or beside it when both fit on a line */
   .controls .label:not(.inline) {
     flex-direction: column;
     align-items: stretch;
-    gap: 2px;
+    gap: 4px;
   }
 
   .controls .label.inline > :first-child:not(select) {

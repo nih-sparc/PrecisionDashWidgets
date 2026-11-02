@@ -7,13 +7,8 @@
           <div class="genes-input-group">
             <div class="gene-input-wrapper">
               <label for="gene1-select">
+                <span class="gene-swatch" :style="{ background: gene1Color }" aria-hidden="true"></span>
                 <span class="gene-number">Gene 1</span>
-                <span
-                  v-if="gene1"
-                  class="selected-gene"
-                  :style="{ color: gene1Color }"
-                  >{{ gene1 }}</span
-                >
               </label>
               <input
                 id="gene1-select"
@@ -39,13 +34,8 @@
 
             <div class="gene-input-wrapper">
               <label for="gene2-select">
+                <span class="gene-swatch" :style="{ background: gene2Color }" aria-hidden="true"></span>
                 <span class="gene-number">Gene 2</span>
-                <span
-                  v-if="gene2"
-                  class="selected-gene"
-                  :style="{ color: gene2Color }"
-                  >{{ gene2 }}</span
-                >
               </label>
               <input
                 id="gene2-select"
@@ -95,6 +85,7 @@
                 Visualize Co-expression
               </span>
             </button>
+            <span v-if="reductionOptions.length > 1" class="toggle-label">Map</span>
             <SegmentedToggle
               v-model="selectedReduction"
               hide-single
@@ -124,14 +115,14 @@
       <!-- Stats -->
       <div v-if="showStats" class="stats-panel">
         <div class="stat-item">
-          <span class="stat-label">Total cells:</span>
+          <span class="stat-label">Total cells</span>
           <span class="stat-value">{{
             stats.totalCells.toLocaleString()
           }}</span>
         </div>
         <div class="stat-item">
           <span class="stat-label" :style="{ color: gene1Color }" :title="rnaStatsNote"
-            >{{ gene1 }} expressing (RNA):</span
+            >{{ gene1 }} expressing (RNA)</span
           >
           <span class="stat-value"
             >{{ genesPending ? "…" : `${stats.gene1Expressing.toLocaleString()} (${stats.gene1Pct}%)` }}</span
@@ -142,7 +133,7 @@
         </div>
         <div class="stat-item">
           <span class="stat-label" :style="{ color: gene2Color }" :title="rnaStatsNote"
-            >{{ gene2 }} expressing (RNA):</span
+            >{{ gene2 }} expressing (RNA)</span
           >
           <span class="stat-value"
             >{{ genesPending ? "…" : `${stats.gene2Expressing.toLocaleString()} (${stats.gene2Pct}%)` }}</span
@@ -153,11 +144,58 @@
         </div>
         <div class="stat-item">
           <span class="stat-label" :style="{ color: coexpressColor }" :title="rnaStatsNote"
-            >Co-expressing (RNA):</span
+            >Co-expressing (RNA)</span
           >
           <span class="stat-value"
             >{{ genesPending ? "…" : `${stats.coexpressing.toLocaleString()} (${stats.coexpressPct}%)` }}</span
           >
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div v-if="showStats" class="legend-container">
+        <div class="legend-title" title="Click a color to change it">Map colors</div>
+        <div class="legend">
+          <div class="legend-item">
+            <input
+              type="color"
+              v-model="noExpressionColor"
+              class="color-picker"
+              @change="updateVisualization"
+              title="Choose color for no expression"
+            />
+            <span>None</span>
+          </div>
+          <div class="legend-item">
+            <input
+              type="color"
+              v-model="gene1Color"
+              class="color-picker"
+              @change="updateVisualization"
+              :title="`Choose color for ${gene1} only`"
+            />
+            <span>{{ gene1 }} only</span>
+          </div>
+          <div class="legend-item">
+            <input
+              type="color"
+              v-model="gene2Color"
+              class="color-picker"
+              @change="updateVisualization"
+              :title="`Choose color for ${gene2} only`"
+            />
+            <span>{{ gene2 }} only</span>
+          </div>
+          <div class="legend-item">
+            <input
+              type="color"
+              v-model="coexpressColor"
+              class="color-picker"
+              @change="updateVisualization"
+              title="Choose color for co-expression"
+            />
+            <span>Both</span>
+          </div>
         </div>
       </div>
     </div>
@@ -186,6 +224,7 @@
             "
             :aria-expanded="gradientExpanded.toString()"
           >
+            <span>Color guide</span>
             <!-- Chevron Up (collapsed) -->
             <svg
               v-if="!gradientExpanded"
@@ -302,52 +341,6 @@
         </div>
       </div>
 
-      <!-- Legend -->
-      <div v-if="showStats" class="legend-container">
-        <div class="legend">
-          <div class="legend-item">
-            <input
-              type="color"
-              v-model="noExpressionColor"
-              class="color-picker"
-              @change="updateVisualization"
-              title="Choose color for no expression"
-            />
-            <span>None</span>
-          </div>
-          <div class="legend-item">
-            <input
-              type="color"
-              v-model="gene1Color"
-              class="color-picker"
-              @change="updateVisualization"
-              :title="`Choose color for ${gene1} only`"
-            />
-            <span>{{ gene1 }} only</span>
-          </div>
-          <div class="legend-item">
-            <input
-              type="color"
-              v-model="gene2Color"
-              class="color-picker"
-              @change="updateVisualization"
-              :title="`Choose color for ${gene2} only`"
-            />
-            <span>{{ gene2 }} only</span>
-          </div>
-          <div class="legend-item">
-            <input
-              type="color"
-              v-model="coexpressColor"
-              class="color-picker"
-              @change="updateVisualization"
-              title="Choose color for co-expression"
-            />
-            <span>Both</span>
-          </div>
-        </div>
-      </div>
-
       <!-- Empty state -->
       <div v-if="!showChart && !loading && !error" class="empty-state">
         <div class="empty-icon">🔬</div>
@@ -427,9 +420,10 @@ const gene2Data = ref(null);
 const genesPending = computed(() => loading.value && !!viewer.value);
 
 // Colors
-const gene1Color = ref("#ff0000");
-const gene2Color = ref("#0000ff");
-const coexpressColor = ref("#FF00FF");
+// Colour-blind-safe defaults (Okabe–Ito vermillion and blue; a reddish purple for both)
+const gene1Color = ref("#D55E00");
+const gene2Color = ref("#0072B2");
+const coexpressColor = ref("#B4459F");
 const noExpressionColor = ref("#CCCCCC");
 
 // Co-expression boost factor
@@ -855,18 +849,8 @@ async function renderChart() {
 
   const regl = reglInstance.value;
 
-  // Scales -> NDC
-  const xExtent = d3.extent(points, (d) => d.x);
-  const yExtent = d3.extent(points, (d) => d.y);
-  const xPad = (xExtent[1] - xExtent[0]) * 0.05;
-  const yPad = (yExtent[1] - yExtent[0]) * 0.05;
-  xExtent[0] -= xPad;
-  xExtent[1] += xPad;
-  yExtent[0] -= yPad;
-  yExtent[1] += yPad;
-
-  const xScale = d3.scaleLinear().domain(xExtent).range([-1, 1]);
-  const yScale = d3.scaleLinear().domain(yExtent).range([-1, 1]);
+  // Scales -> NDC, with one scale for both axes so the map isn't stretched
+  const { xScale, yScale } = equalAspectScales(points, width, height, [-1, 1], [-1, 1]);
 
   // Buffers
   const positions = [];
@@ -1137,6 +1121,30 @@ async function renderChart() {
   renderGradientLegend();
 }
 
+/**
+ * Scales from map coordinates to the given output ranges, using the same units per pixel on
+ * both axes (distances on a cell map are meaningful, so it mustn't be stretched to fill a
+ * wide box). The map is centered, with a small margin around the outermost cells.
+ */
+function equalAspectScales(points, width, height, xRange, yRange) {
+  const MARGIN = 0.02;
+  const [x0, x1] = d3.extent(points, (d) => d.x);
+  const [y0, y1] = d3.extent(points, (d) => d.y);
+  const dx = (x1 - x0 || 1) * (1 + 2 * MARGIN);
+  const dy = (y1 - y0 || 1) * (1 + 2 * MARGIN);
+  // Fraction of each axis the map fills; the tighter axis fills it all
+  const pxPerUnit = Math.min(width / dx, height / dy);
+  const fx = (dx * pxPerUnit) / width;
+  const fy = (dy * pxPerUnit) / height;
+  const squeeze = ([a, b], f) => [(a + b) / 2 - ((b - a) * f) / 2, (a + b) / 2 + ((b - a) * f) / 2];
+  const xMid = (x0 + x1) / 2;
+  const yMid = (y0 + y1) / 2;
+  return {
+    xScale: d3.scaleLinear().domain([xMid - dx / 2, xMid + dx / 2]).range(squeeze(xRange, fx)),
+    yScale: d3.scaleLinear().domain([yMid - dy / 2, yMid + dy / 2]).range(squeeze(yRange, fy)),
+  };
+}
+
 // 2D fallback
 function renderChart2D(points) {
   const canvas = chartCanvas.value;
@@ -1147,16 +1155,13 @@ function renderChart2D(points) {
   canvas.width = Math.max(1, Math.floor(rect.width));
   canvas.height = Math.max(300, Math.floor(rect.height));
 
-  const xExtent = d3.extent(points, (d) => d.x);
-  const yExtent = d3.extent(points, (d) => d.y);
-  const xScale = d3
-    .scaleLinear()
-    .domain(xExtent)
-    .range([20, canvas.width - 20]);
-  const yScale = d3
-    .scaleLinear()
-    .domain(yExtent)
-    .range([canvas.height - 20, 20]);
+  const { xScale, yScale } = equalAspectScales(
+    points,
+    canvas.width,
+    canvas.height,
+    [0, canvas.width],
+    [canvas.height, 0]
+  );
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   points.forEach((p) => {
@@ -1299,12 +1304,12 @@ async function updateVisualization() {
 .gene-coexpression-viewer {
   display: flex;
   flex-direction: row;
-  max-width: 1600px;
-  margin: 0 auto;
-  padding: 0;
+  padding: 0 8px 8px;
+  box-sizing: border-box;
   height: 100%;
   gap: 16px;
 }
+/* A divider rather than a tinted panel: the stat tiles are already tinted */
 .viewer-left {
   display: flex;
   flex-direction: column;
@@ -1313,38 +1318,29 @@ async function updateVisualization() {
   flex: 0 0 auto;
   gap: 16px;
   overflow: hidden;
+  padding-right: 16px;
+  border-right: 1px solid var(--pdw-border);
 }
 .viewer-right {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  gap: 16px;
+  min-width: 0;
+  gap: 8px;
   flex: 1;
 }
+/* The widget card is the frame: panels inside it have no borders of their own, and size
+   to their content instead of stretching to fill the column */
 .controls-panel {
-  background: var(--pdw-surface);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
-  padding: 0;
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
 }
 .stats-panel {
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--pdw-primary) 5%, transparent) 0%,
-    rgba(118, 75, 162, 0.05) 100%
-  );
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
-  padding: 12px;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: 12px;
-  flex: 1;
-  min-height: 0;
+  gap: 8px;
+  padding: 0 8px;
+  flex: 0 0 auto;
 }
 .genes-section {
   padding: 8px;
@@ -1366,7 +1362,7 @@ async function updateVisualization() {
 .gene-input-wrapper label {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
   font-size: 14px;
   font-weight: 500;
   color: var(--pdw-text-muted);
@@ -1376,14 +1372,15 @@ async function updateVisualization() {
   font-weight: 600;
   color: var(--pdw-text);
 }
-.selected-gene {
-  font-weight: 600;
-  font-size: 14px;
+.gene-swatch {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 .gene-input {
   padding: 10px 14px;
   border: 2px solid var(--pdw-border);
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
   font-size: 14px;
   transition: all 0.2s;
   background: var(--pdw-surface);
@@ -1414,7 +1411,7 @@ async function updateVisualization() {
   justify-content: center;
   padding: 0 8px;
   flex-shrink: 0;
-  color: #cbd5e1;
+  color: var(--pdw-text-muted);
   font-size: 14px;
   font-weight: 600;
   text-transform: uppercase;
@@ -1423,14 +1420,19 @@ async function updateVisualization() {
 
 .action-row {
   display: flex;
+  align-items: center;
   gap: 8px;
+}
+.toggle-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pdw-text-muted);
 }
 .action-row .visualize-btn {
   flex: 1;
 }
 .cell-map-toggle {
   align-self: stretch;
-  border-radius: 2px;
 }
 .cell-map-toggle :deep(button) {
   padding: 0 14px;
@@ -1453,7 +1455,7 @@ async function updateVisualization() {
   height: 60px;
   border: 5px solid #f3f3f3;
   border-top: 5px solid var(--pdw-primary);
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
   animation: spin 1s linear infinite;
 }
 @keyframes spin {
@@ -1468,7 +1470,7 @@ async function updateVisualization() {
 .error-panel {
   background: #fff3cd;
   border: 1px solid #ffc107;
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
   padding: 16px;
   margin-bottom: 20px;
   color: #856404;
@@ -1480,7 +1482,7 @@ async function updateVisualization() {
   padding: 4px 12px;
   background: transparent;
   border: 1px solid #856404;
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
   color: #856404;
   cursor: pointer;
   font-size: 14px;
@@ -1494,20 +1496,18 @@ async function updateVisualization() {
 .stat-item {
   display: flex;
   flex-direction: column;
-  padding: 8px;
-  background: var(--pdw-surface);
-  border-radius: 2px;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--pdw-surface-muted);
 }
 .stat-label {
   font-size: 14px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   color: var(--pdw-text-muted);
 }
 .stat-value {
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 600;
   color: var(--pdw-text);
 }
 .stat-sub {
@@ -1515,13 +1515,11 @@ async function updateVisualization() {
   color: var(--pdw-text-muted);
 }
 
+/* No frame or padding: the map uses all of its space */
 .chart-container {
   min-height: 0;
   display: flex;
   background: var(--pdw-surface);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
-  padding: 24px;
   flex: 1;
   position: relative;
 }
@@ -1544,7 +1542,7 @@ async function updateVisualization() {
   padding: 6px 14px;
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--pdw-border);
-  border-radius: 999px;
+  border-radius: var(--pdw-radius);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
   font-size: 14px;
   color: var(--pdw-text-muted);
@@ -1571,7 +1569,7 @@ async function updateVisualization() {
   position: fixed;
   background: var(--pdw-surface);
   border: 2px solid var(--pdw-primary);
-  border-radius: 6px;
+  border-radius: var(--pdw-radius);
   padding: 12px;
   pointer-events: none;
   z-index: 10000;
@@ -1609,20 +1607,18 @@ async function updateVisualization() {
 }
 
 .legend-container {
-  flex-direction: column;
-  align-items: center;
+  padding: 8px;
+}
+.legend-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pdw-text-muted);
+  margin-bottom: 6px;
 }
 .legend {
-  flex-direction: row;
-  align-items: flex-start;
-  min-width: unset;
-  width: 100%;
   display: flex;
-  gap: 12px;
-  background: var(--pdw-surface);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
-  padding: 16px;
+  flex-wrap: wrap;
+  gap: 8px 16px;
 }
 .legend-item {
   display: flex;
@@ -1633,22 +1629,27 @@ async function updateVisualization() {
   flex-shrink: 0;
   min-width: 0;
 }
+/* Flat square swatches; the native picker opens on click */
 .color-picker {
-  width: 28px;
-  height: 28px;
-  border: 2px solid rgba(0, 0, 0, 0.1);
-  border-radius: 2px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--pdw-border);
   cursor: pointer;
   padding: 0;
   background: none;
   outline: none;
-  transition: all 0.2s;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+.color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.color-picker::-webkit-color-swatch {
+  border: none;
+}
+.color-picker::-moz-color-swatch {
+  border: none;
 }
 .color-picker:hover {
-  transform: scale(1.05);
-  border-color: rgba(0, 0, 0, 0.2);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  border-color: var(--pdw-text-muted);
 }
 .color-picker:focus {
   border-color: var(--pdw-primary);
@@ -1658,13 +1659,15 @@ async function updateVisualization() {
 /* Floating Color Mixer */
 .floating-mixer-toggle {
   position: absolute;
-  bottom: 16px;
-  right: 16px;
-  width: 48px;
-  height: 48px;
+  bottom: 8px;
+  right: 8px;
+  height: 32px;
+  padding: 0 10px;
+  gap: 6px;
+  font-size: 14px;
   background: var(--pdw-surface);
-  border: 2px solid var(--pdw-border);
-  border-radius: 12px;
+  border: 1px solid var(--pdw-border);
+  border-radius: var(--pdw-radius);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1677,13 +1680,12 @@ async function updateVisualization() {
   background: var(--pdw-surface-muted);
   border-color: #cbd5e1;
   color: var(--pdw-text);
-  transform: translateY(-2px);
 }
 
 .floating-mixer-panel {
   position: absolute;
-  bottom: 51px;
-  right: 16px;
+  bottom: 48px;
+  right: 8px;
   background: var(--pdw-surface);
   border: 2px solid var(--pdw-border);
   z-index: 10;
@@ -1705,7 +1707,7 @@ async function updateVisualization() {
   background: none;
   border: none;
   padding: 4px;
-  border-radius: 4px;
+  border-radius: var(--pdw-radius);
   cursor: pointer;
   color: var(--pdw-text-muted);
   transition: all 0.2s;
@@ -1727,7 +1729,7 @@ async function updateVisualization() {
 }
 .gradient-canvas {
   border: 2px solid var(--pdw-border);
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
 }
 .gradient-labels {
   position: absolute;
@@ -1750,7 +1752,7 @@ async function updateVisualization() {
   z-index: 10;
   background: var(--pdw-surface);
   padding: 2px 4px;
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
   font-size: 14px;
 }
 .x-axis-label {
@@ -1762,7 +1764,7 @@ async function updateVisualization() {
   z-index: 10;
   background: var(--pdw-surface);
   padding: 2px 4px;
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
   font-size: 14px;
 }
 .axis-arrow {

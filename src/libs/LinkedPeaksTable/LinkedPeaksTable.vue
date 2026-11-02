@@ -59,7 +59,7 @@
               title="Find linked peaks containing a genomic position (hg38), for any gene"
               @submit.prevent="lookUpPosition"
             >
-              Find position:
+              Find position
               <div class="gene-input-wrapper">
                 <input
                   v-model="positionQuery"
@@ -101,7 +101,7 @@
               <span
                 :class="{ calc: columnInfo('link_type').computed }"
                 v-quick-tip="columnInfo('link_type').computed ? columnInfo('link_type').rule : null"
-              >Type:</span>
+              >Type</span>
               <label
                 v-for="t in LINK_TYPES"
                 :key="t.value"
@@ -793,7 +793,7 @@ function corrWidth(r) {
   height: 100%;
   width: 100%;
   background: var(--pdw-surface);
-  padding: 12px 16px;
+  padding: 8px 16px;
   box-sizing: border-box;
   container-type: inline-size;
 }
@@ -809,14 +809,12 @@ function corrWidth(r) {
   min-height: 0;
 }
 
+/* The widget card is the frame: the controls and table have no borders or backgrounds of
+   their own */
 .controls {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 6px 10px;
-  background: var(--pdw-surface-muted);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
@@ -824,7 +822,7 @@ function corrWidth(r) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 14px;
+  gap: 8px 16px;
 }
 
 /* Values the data processor calculated (not in the submitted data); hover for how */
@@ -880,9 +878,9 @@ function corrWidth(r) {
 .label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--pdw-text-muted);
   white-space: nowrap;
 }
@@ -891,16 +889,10 @@ function corrWidth(r) {
   color: var(--pdw-text);
 }
 
-.gene-expression-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--pdw-text);
-}
-
 .select {
   padding: 4px 8px;
   border: 1px solid #cbd5e1;
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
   font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
@@ -911,19 +903,18 @@ function corrWidth(r) {
 .gene-input:focus {
   outline: none;
   border-color: var(--pdw-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
 .gene-input-wrapper {
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .gene-input {
   width: 130px;
   padding: 4px 8px;
   border: 1px solid #cbd5e1;
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
   font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
@@ -996,7 +987,13 @@ function corrWidth(r) {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  border: 1px solid var(--pdw-border);
+}
+
+/* Borders reset: host pages often style tables globally. Rows keep their separators. */
+.links-table,
+.links-table th,
+.links-table td {
+  border: none;
 }
 
 .links-table {
@@ -1013,12 +1010,13 @@ function corrWidth(r) {
 .links-table th {
   position: sticky;
   top: 0;
-  background: #f1f5f9;
+  /* Opaque so rows don't show through the sticky header */
+  background: var(--pdw-surface);
   text-align: left;
   font-weight: 600;
   font-size: 14px;
-  color: #475569;
-  padding: 6px 8px;
+  color: var(--pdw-text-muted);
+  padding: 8px;
   border-bottom: 1px solid var(--pdw-border);
   white-space: nowrap;
   cursor: pointer;
@@ -1026,14 +1024,14 @@ function corrWidth(r) {
 }
 
 .links-table th.sorted {
-  color: var(--pdw-primary);
+  color: var(--pdw-text);
 }
 
 /* Set on cells too: host pages often size td/th themselves */
 .links-table td {
   font-size: 14px;
-  padding: 4px 6px;
-  border-bottom: 1px solid #f1f5f9;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--pdw-border);
   white-space: nowrap;
 }
 
@@ -1046,12 +1044,12 @@ function corrWidth(r) {
 }
 
 .links-table tbody tr.selected {
-  background: #eef2ff;
+  background: var(--pdw-surface-muted);
   box-shadow: inset 3px 0 0 var(--pdw-primary);
 }
 
 .small-btn {
-  padding: 3px 10px;
+  padding: 4px 8px;
 }
 
 .position-input {
@@ -1059,9 +1057,7 @@ function corrWidth(r) {
 }
 
 .lookup-results {
-  padding: 6px 10px;
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
+  padding: 8px;
   background: var(--pdw-surface-muted);
   font-size: 14px;
   color: var(--pdw-text);
@@ -1120,7 +1116,7 @@ function corrWidth(r) {
 }
 
 .muted {
-  color: #94a3b8;
+  color: var(--pdw-text-muted);
 }
 
 .center {
@@ -1130,7 +1126,7 @@ function corrWidth(r) {
 .type-pill {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--pdw-radius);
   font-size: 14px;
   font-weight: 600;
   background: #e2e8f0;
@@ -1161,8 +1157,7 @@ function corrWidth(r) {
 .corr-bar-track {
   width: 30px;
   height: 6px;
-  background: #f1f5f9;
-  border-radius: 3px;
+  background: var(--pdw-surface-muted);
   overflow: hidden;
 }
 
@@ -1202,7 +1197,7 @@ function corrWidth(r) {
 }
 
 .explainer p {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
 }
 
 .footnote {
@@ -1214,9 +1209,9 @@ function corrWidth(r) {
 }
 
 .plot-message {
-  padding: 4px 2px;
+  padding: 4px 0;
   font-size: 14px;
-  color: #4b5563;
+  color: var(--pdw-text-muted);
 }
 
 .loading-container,
@@ -1231,10 +1226,7 @@ function corrWidth(r) {
 
 .empty-card {
   max-width: 420px;
-  padding: 24px 28px;
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
-  background: var(--pdw-surface-muted);
+  padding: 16px;
   text-align: center;
 }
 
@@ -1262,7 +1254,7 @@ function corrWidth(r) {
 }
 
 .loading-text {
-  margin-top: 20px;
+  margin-top: 16px;
   font-size: 16px;
   color: var(--pdw-text-muted);
 }
@@ -1295,7 +1287,7 @@ function corrWidth(r) {
   height: 100%;
   background: #fff3cd;
   border: 1px solid #ffc107;
-  padding: 20px;
+  padding: 16px;
   color: #856404;
 }
 
@@ -1309,35 +1301,36 @@ function corrWidth(r) {
 }
 
 /* Wide (e.g. full width under the chromatin view): controls in a column left of the table,
-   so the table gets the height. Matches the chromatin view. */
+   so the table gets the height. Matches the chromatin view: one divider line between them */
 @container (min-width: 1000px) {
   .content-layout {
     flex-direction: row;
-    gap: 12px;
+    gap: 16px;
   }
 
   .controls {
     width: 270px;
     flex-shrink: 0;
-    align-self: flex-start;
+    align-self: stretch;
     max-height: 100%;
     overflow-y: auto;
     box-sizing: border-box;
-    padding: 8px 10px;
-    gap: 6px;
+    padding-right: 16px;
+    border-right: 1px solid var(--pdw-border);
+    gap: 8px;
   }
 
   .control-row {
     flex-direction: column;
     align-items: stretch;
-    gap: 6px;
+    gap: 8px;
   }
 
   /* Label above its control, except short ones that fit on a line */
   .controls .label:not(.inline) {
     flex-direction: column;
     align-items: stretch;
-    gap: 2px;
+    gap: 4px;
   }
 
   .controls .label.inline {
