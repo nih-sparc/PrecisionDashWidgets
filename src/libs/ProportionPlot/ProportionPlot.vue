@@ -9,6 +9,7 @@
     <!-- Error State -->
     <div v-else-if="error" class="error-container">
       <strong>Error:</strong> {{ error }}
+      <button type="button" class="pdw-btn retry-btn" @click="retryLoad">Retry</button>
     </div>
 
     <!-- Main Dashboard -->
@@ -17,7 +18,7 @@
         <!-- Controls -->
         <div class="controls">
           <label class="label">
-            X-axis (group):
+            <span class="label-text">X-axis (group)</span>
             <select
               v-model="xCol"
               @change="plot"
@@ -32,7 +33,7 @@
           </label>
 
           <label class="label">
-            Y-axis (category):
+            <span class="label-text">Y-axis (category)</span>
             <select
               v-model="yCol"
               @change="plot"
@@ -207,7 +208,7 @@ onMounted(() => {
 });
 
 // Shared engine: the provider's, or one per data URL shared with the other widgets
-useWidgetDataEngine({
+const dataEngine = useWidgetDataEngine({
   dataPath: () => props.dataPath,
   config: () => props.config,
   onReady: initWithViewer,
@@ -216,6 +217,14 @@ useWidgetDataEngine({
     loading.value = false;
   },
 });
+
+// Retry after a failed load: the dataset itself if it never loaded, else this view's data
+function retryLoad() {
+  error.value = null;
+  loading.value = true;
+  if (manager.value) initWithViewer(manager.value);
+  else dataEngine.retry();
+}
 
 onBeforeUnmount(() => {
   clearTimeout(resizeTimeout);
@@ -337,7 +346,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
   const maxLabelLength = Math.max(...xLevels.map((x) => x.length));
   const estimatedLabelHeight = Math.min(maxLabelLength * 6.5, 240) + 48;
   const margin = {
-    top: 52,
+    top: 40,
     right: 16,
     bottom: Math.max(80, estimatedLabelHeight),
     left: 80,
@@ -410,7 +419,8 @@ function drawPlot({ rows, xLevels, yLevels }) {
   const xAxisGroup = g
     .append("g")
     .attr("transform", `translate(0,${innerHeight})`)
-    .call(d3.axisBottom(xScale));
+    .call(d3.axisBottom(xScale))
+    .attr("font-family", null);
 
   const cfg = activeConfig.value;
   let hasLinks = false;
@@ -452,6 +462,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
   // Y axis
   g.append("g")
     .call(d3.axisLeft(yScale).tickFormat(d3.format(".0%")))
+    .attr("font-family", null)
     .selectAll("text")
     .style("font-size", "14px");
 
@@ -461,8 +472,9 @@ function drawPlot({ rows, xLevels, yLevels }) {
     .attr("x", -innerHeight / 2)
     .attr("y", -margin.left + 20)
     .attr("text-anchor", "middle")
-    .style("font-size", "16px")
+    .style("font-size", "14px")
     .style("font-weight", "600")
+    .style("fill", "var(--pdw-text)")
     .text("Proportion");
 
   // X axis label
@@ -470,18 +482,20 @@ function drawPlot({ rows, xLevels, yLevels }) {
     .attr("x", innerWidth / 2)
     .attr("y", innerHeight + margin.bottom - 10)
     .attr("text-anchor", "middle")
-    .style("font-size", "16px")
+    .style("font-size", "14px")
     .style("font-weight", "600")
+    .style("fill", "var(--pdw-text)")
     .text(xCol.value);
 
   // Title
   svg
     .append("text")
     .attr("x", width / 2)
-    .attr("y", 28)
+    .attr("y", 20)
     .attr("text-anchor", "middle")
-    .style("font-size", "18px")
-    .style("font-weight", "700")
+    .style("font-size", "16px")
+    .style("font-weight", "600")
+    .style("fill", "var(--pdw-text)")
     .text(`${yCol.value} proportions within ${xCol.value}`);
 
   // Populate HTML legend
@@ -506,29 +520,27 @@ function drawPlot({ rows, xLevels, yLevels }) {
   height: 100%;
   width: 100%;
   background: var(--pdw-surface);
-  padding: 12px 16px;
+  padding: 8px 16px 16px;
   box-sizing: border-box;
 }
 
-
-
 .content-layout {
   display: flex;
-  gap: 24px;
+  gap: 16px;
   flex: 1;
   min-height: 0;
 }
 
+/* A divider rather than a tinted panel: the widget card is the frame. The column is full
+   height, but its controls size to their content. */
 .controls {
   width: 20%;
   min-width: 250px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  background: var(--pdw-surface-muted);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
+  gap: 16px;
+  padding-right: 16px;
+  border-right: 1px solid var(--pdw-border);
   flex-shrink: 0;
   overflow-y: auto;
 }
@@ -538,14 +550,19 @@ function drawPlot({ rows, xLevels, yLevels }) {
   flex-direction: column;
   gap: 8px;
   font-size: 14px;
-  font-weight: 500;
+  color: var(--pdw-text);
+}
+
+.label-text {
+  font-size: 14px;
+  font-weight: 600;
   color: var(--pdw-text-muted);
 }
 
 .select {
   padding: 10px 14px;
   border: 2px solid var(--pdw-border);
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
   font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
@@ -563,29 +580,26 @@ function drawPlot({ rows, xLevels, yLevels }) {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
-
-
-
 .pp-message {
   font-size: 14px;
-  color: #4b5563;
+  color: var(--pdw-text-muted);
 }
 
 .pp-tooltip {
   position: fixed;
-  background: rgba(255, 255, 255, 0.98);
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  padding: 10px 12px;
+  background: var(--pdw-surface);
+  color: var(--pdw-text);
+  border: 1px solid var(--pdw-border);
+  border-radius: var(--pdw-radius);
+  padding: 8px;
   pointer-events: none;
   z-index: 20;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   font-size: 14px;
   max-width: 260px;
 }
 
 .pp-tooltip-header {
-  font-weight: 700;
+  font-weight: 600;
   font-size: 14px;
   color: var(--pdw-text);
   margin-bottom: 6px;
@@ -602,7 +616,7 @@ function drawPlot({ rows, xLevels, yLevels }) {
 
 .pp-tooltip-label {
   flex: 1;
-  color: #4b5563;
+  color: var(--pdw-text-muted);
 }
 
 .pp-tooltip-value {
@@ -614,30 +628,27 @@ function drawPlot({ rows, xLevels, yLevels }) {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
 }
 
+/* No frame: the chart uses all of its space */
 .plot-container {
   flex: 1;
   position: relative;
-  background: var(--pdw-surface);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
   min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+/* Flat legend under the chart: a light top divider, no box */
 .legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
-  padding: 8px 12px;
-  background: var(--pdw-surface-muted);
-  border: 1px solid var(--pdw-border);
-  border-top: none;
-  border-radius: 0 0 2px 2px;
+  gap: 8px 16px;
+  padding: 8px;
+  border-top: 1px solid var(--pdw-border);
 }
 
 .legend-item {
@@ -645,13 +656,12 @@ function drawPlot({ rows, xLevels, yLevels }) {
   align-items: center;
   gap: 6px;
   font-size: 14px;
-  color: #374151;
+  color: var(--pdw-text);
 }
 
 .legend-swatch {
   width: 12px;
   height: 12px;
-  border-radius: 2px;
   flex-shrink: 0;
 }
 
@@ -680,8 +690,8 @@ function drawPlot({ rows, xLevels, yLevels }) {
 }
 
 .loading-text {
-  margin-top: 20px;
-  font-size: 16px;
+  margin-top: 16px;
+  font-size: 14px;
   color: var(--pdw-text-muted);
 }
 
@@ -713,12 +723,16 @@ function drawPlot({ rows, xLevels, yLevels }) {
   height: 100%;
   background: #fff3cd;
   border: 1px solid #ffc107;
-  padding: 20px;
+  padding: 16px;
   color: #856404;
 }
 
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.retry-btn {
+  margin-left: 12px;
 }
 </style>

@@ -9,6 +9,7 @@
     <!-- Error State -->
     <div v-else-if="error" class="error-container">
       <strong>� Error:</strong> {{ error }}
+      <button type="button" class="pdw-btn retry-btn" @click="retryLoad">Retry</button>
     </div>
 
     <!-- Main Dashboard -->
@@ -17,7 +18,7 @@
         <!-- Controls -->
         <div class="controls">
           <label class="label">
-            X-axis (Metadata):
+            <span class="label-text">X-axis (metadata)</span>
             <select
               v-model="selectedMetadataColumn"
               @change="updateViolin"
@@ -29,8 +30,8 @@
             </select>
           </label>
 
-          <label class="label gene-expression-label">
-            Gene Expression
+          <label class="label">
+            <span class="label-text">Gene expression</span>
             <div class="gene-input-wrapper">
               <input
                 v-model="geneSearch"
@@ -57,8 +58,8 @@
             </div>
           </label>
 
-          <label class="label">
-            Plot Type:
+          <div class="label" role="group" aria-labelledby="violin-plot-type-label">
+            <span id="violin-plot-type-label" class="label-text">Plot type</span>
             <SegmentedToggle
               v-model="plotType"
               aria-label="Plot type"
@@ -67,7 +68,7 @@
                 { key: 'box', label: 'Box' },
               ]"
             />
-          </label>
+          </div>
 
           <label class="checkbox-label">
             <input
@@ -273,7 +274,7 @@ onMounted(() => {
 });
 
 // Shared engine: the provider's, or one per data URL shared with the other widgets
-useWidgetDataEngine({
+const dataEngine = useWidgetDataEngine({
   dataPath: () => props.dataPath,
   config: () => props.config,
   onReady: initWithViewer,
@@ -282,6 +283,14 @@ useWidgetDataEngine({
     loading.value = false;
   },
 });
+
+// Retry after a failed load: the dataset itself if it never loaded, else this view's data
+function retryLoad() {
+  error.value = null;
+  loading.value = true;
+  if (manager.value) initWithViewer(manager.value);
+  else dataEngine.retry();
+}
 
 onBeforeUnmount(() => {
   if (searchTimeout) clearTimeout(searchTimeout);
@@ -405,7 +414,7 @@ function drawViolinPlot(data) {
   // Dynamic bottom margin based on longest label rotated at -45°
   const maxLabelLength = Math.max(...data.map((d) => d.category.length));
   const estimatedLabelHeight = Math.min(maxLabelLength * 6.5, 240) + 48;
-  const margin = { top: 60, right: 40, bottom: Math.max(80, estimatedLabelHeight), left: 92 };
+  const margin = { top: 48, right: 16, bottom: Math.max(80, estimatedLabelHeight), left: 92 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
 
@@ -602,7 +611,8 @@ function drawViolinPlot(data) {
   // X axis
   const xAxisGroup = g.append("g")
     .attr("transform", `translate(0,${innerHeight})`)
-    .call(d3.axisBottom(xScale));
+    .call(d3.axisBottom(xScale))
+    .attr("font-family", null);
 
   const cfg = activeConfig.value;
 
@@ -645,6 +655,7 @@ function drawViolinPlot(data) {
   // Y axis
   g.append("g")
     .call(d3.axisLeft(yScale))
+    .attr("font-family", null)
     .selectAll("text")
     .style("font-size", "14px");
 
@@ -653,8 +664,9 @@ function drawViolinPlot(data) {
     .attr("x", innerWidth / 2)
     .attr("y", innerHeight + margin.bottom - 10)
     .attr("text-anchor", "middle")
-    .style("font-size", "16px")
+    .style("font-size", "14px")
     .style("font-weight", "600")
+    .style("fill", "var(--pdw-text)")
     .text(selectedMetadataColumn.value);
 
   // Y axis label
@@ -665,18 +677,20 @@ function drawViolinPlot(data) {
     .attr("x", -innerHeight / 2)
     .attr("y", -margin.left + 22)
     .attr("text-anchor", "middle")
-    .style("font-size", "16px")
+    .style("font-size", "14px")
     .style("font-weight", "600")
+    .style("fill", "var(--pdw-text)")
     .text(yLabel);
 
   // Title
   svg
     .append("text")
     .attr("x", width / 2)
-    .attr("y", 26)
+    .attr("y", 20)
     .attr("text-anchor", "middle")
-    .style("font-size", "18px")
-    .style("font-weight", "700")
+    .style("font-size", "16px")
+    .style("font-weight", "600")
+    .style("fill", "var(--pdw-text)")
     .text(`Violin Plot: ${yLabel} by ${selectedMetadataColumn.value}`);
 }
 
@@ -695,7 +709,7 @@ function drawExpressingLabel(g, xCenter, bandWidth, values) {
     .attr("y", -8)
     .attr("text-anchor", "middle")
     .style("font-size", "14px")
-    .style("fill", "#4b5563")
+    .style("fill", "var(--pdw-text-muted)")
     .text(`${pct}%`)
     .append("title")
     .text(
@@ -761,10 +775,12 @@ function drawDataPoints(data) {
     // Violin mode: spread dots only as wide as the violin is at that height (sina plot)
     const shape = plotType.value === "violin" ? densities?.get(category) : null;
 
-    ctx.fillStyle = color;
-    ctx.strokeStyle = "white";
-    ctx.lineWidth = 0.3;
-    ctx.globalAlpha = 0.4;
+    // Dots sit on a violin of the same color: a lighter fill with a darker outline in the
+    // same hue (not black) keeps each one visible against it
+    ctx.fillStyle = d3.color(color).brighter(0.8).formatHex();
+    ctx.strokeStyle = d3.color(color).darker(1.2).formatHex();
+    ctx.lineWidth = 0.8;
+    ctx.globalAlpha = 0.85;
 
     values.forEach((value) => {
       const x = shape
@@ -773,7 +789,7 @@ function drawDataPoints(data) {
       const y = yScale(value);
 
       ctx.beginPath();
-      ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+      ctx.arc(x, y, 2.25, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     });
@@ -813,29 +829,27 @@ function updateDataPoints() {
   height: 100%;
   width: 100%;
   background: var(--pdw-surface);
-  padding: 12px 16px;
+  padding: 8px 16px 16px;
   box-sizing: border-box;
 }
 
-
-
 .content-layout {
   display: flex;
-  gap: 24px;
+  gap: 16px;
   flex: 1;
   min-height: 0;
 }
 
+/* A divider rather than a tinted panel: the widget card is the frame. The column is full
+   height, but its controls size to their content. */
 .controls {
   width: 20%;
   min-width: 250px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  background: var(--pdw-surface-muted);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
+  gap: 16px;
+  padding-right: 16px;
+  border-right: 1px solid var(--pdw-border);
   flex-shrink: 0;
   overflow-y: auto;
 }
@@ -845,20 +859,19 @@ function updateDataPoints() {
   flex-direction: column;
   gap: 8px;
   font-size: 14px;
-  font-weight: 500;
-  color: var(--pdw-text-muted);
+  color: var(--pdw-text);
 }
 
-.gene-expression-label {
+.label-text {
   font-size: 14px;
   font-weight: 600;
-  color: var(--pdw-text);
+  color: var(--pdw-text-muted);
 }
 
 .select {
   padding: 10px 14px;
   border: 2px solid var(--pdw-border);
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
   font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
@@ -879,14 +892,14 @@ function updateDataPoints() {
 .gene-input-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .gene-input {
   flex: 1;
   padding: 10px 14px;
   border: 2px solid var(--pdw-border);
-  border-radius: 2px;
+  border-radius: var(--pdw-radius);
   font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
@@ -909,13 +922,6 @@ function updateDataPoints() {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
 }
 
-
-
-
-
-
-
-
 .checkbox-label {
   display: flex;
   align-items: center;
@@ -933,13 +939,12 @@ function updateDataPoints() {
   accent-color: var(--pdw-primary);
 }
 
+/* No frame: the plot uses all of its space */
 .plot-container {
   flex: 1;
   width: 80%;
+  min-width: 0;
   position: relative;
-  background: var(--pdw-surface);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
   min-height: 0;
   display: flex;
   align-items: center;
@@ -949,9 +954,9 @@ function updateDataPoints() {
 .group-limit-message {
   position: absolute;
   top: 8px;
-  left: 12px;
+  left: 8px;
   font-size: 14px;
-  color: #4b5563;
+  color: var(--pdw-text-muted);
   z-index: 1;
 }
 
@@ -989,8 +994,8 @@ function updateDataPoints() {
 }
 
 .loading-text {
-  margin-top: 20px;
-  font-size: 16px;
+  margin-top: 16px;
+  font-size: 14px;
   color: var(--pdw-text-muted);
 }
 
@@ -1022,7 +1027,7 @@ function updateDataPoints() {
   height: 100%;
   background: #fff3cd;
   border: 1px solid #ffc107;
-  padding: 20px;
+  padding: 16px;
   color: #856404;
 }
 
@@ -1033,6 +1038,10 @@ function updateDataPoints() {
   100% {
     transform: rotate(360deg);
   }
+}
+
+.retry-btn {
+  margin-left: 12px;
 }
 </style>
 ../dataManager

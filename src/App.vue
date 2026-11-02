@@ -9,6 +9,7 @@ import {
   ProportionPlot,
   ChromatinAccessibility,
   LinkedPeaks,
+  ChromatinLinks,
 } from "./components/index";
 import { useViewerAssets } from "@pennsieve-viz/core";
 import { useDatasetConfig } from "./composables/useDatasetConfig.js";
@@ -20,6 +21,7 @@ const RawGeneXDistribution = markRaw(GeneXDistribution);
 const RawProportionPlot = markRaw(ProportionPlot);
 const RawChromatinAccessibility = markRaw(ChromatinAccessibility);
 const RawLinkedPeaks = markRaw(LinkedPeaks);
+const RawChromatinLinks = markRaw(ChromatinLinks);
 
 // --- Pennsieve config ---
 // Published datasets only: assets come from the public discover endpoint, no token.
@@ -47,7 +49,7 @@ const selectedPackageId = computed(
   () => datasets.find((d) => d.id === selectedDatasetId.value)?.packageId ?? null
 );
 
-const { assets, cloudfront, loading, error } = useViewerAssets({
+const { assets, cloudfront, refresh: refreshCloudfront, loading, error } = useViewerAssets({
   api2Url: API2_URL,
   packageId: selectedPackageId,
   assetTypes: ["parquet"],
@@ -78,6 +80,7 @@ const {
   config: activeConfig,
   configLoading,
   getCloudfront,
+  renewCloudfront: refreshCloudfront,
 });
 
 // Provide config to descendants
@@ -90,6 +93,7 @@ const services = {
   ApiUrl: "https://api.pennsieve.net",
   s3Url: dataUrl,
   cloudfront,
+  refreshCloudfront,
 };
 
 //name = component key
@@ -100,6 +104,7 @@ const availableWidgets = [
   { name: "ProportionPlot", component: RawProportionPlot },
   { name: "ChromatinAccessibility", component: RawChromatinAccessibility },
   { name: "LinkedPeaks", component: RawLinkedPeaks },
+  { name: "ChromatinLinks", component: RawChromatinLinks },
 ];
 
 // Dashboard options are now computed to react to config changes
@@ -206,28 +211,15 @@ const dashboardOptions = computed(() => {
   const chromatinDash = {
     defaultLayout: [
       {
-        id: "ChromatinAccessibility-1",
+        // Chromatin view with its linked peaks table underneath, in one widget
+        id: "ChromatinLinks-1",
         x: 0,
         y: 0,
-        w: 6,
-        h: 15,
-        componentKey: "ChromatinAccessibility",
-        componentName: "Chromatin Accessibility",
-        component: RawChromatinAccessibility,
-        Props: {
-          initialGene: genes.chromatin || "SCN10A",
-          config: cfg,
-        },
-      },
-      {
-        id: "LinkedPeaks-1",
-        x: 6,
-        y: 0,
-        w: 6,
-        h: 15,
-        componentKey: "LinkedPeaks",
-        componentName: "Linked Peaks",
-        component: RawLinkedPeaks,
+        w: 12,
+        h: 13,
+        componentKey: "ChromatinLinks",
+        componentName: "Chromatin Accessibility & Linked Peaks",
+        component: RawChromatinLinks,
         Props: {
           initialGene: genes.chromatin || "SCN10A",
           config: cfg,

@@ -9,6 +9,7 @@
     <!-- Error State -->
     <div v-else-if="error" class="error-container">
       <strong>⚠️ Error:</strong> {{ error }}
+      <button type="button" class="pdw-btn retry-btn" @click="retryLoad">Retry</button>
     </div>
 
     <!-- Main Dashboard -->
@@ -20,33 +21,42 @@
         <!-- Left Panel: Metadata UMAP -->
         <div class="panel">
           <div class="controls">
-            <label class="label">
-              Select Cell Metadata:
-              <div class="gene-input-wrapper">
-                <select
-                  v-model="selectedMetadataColumn"
-                  @change="renderMetadataUMAP"
-                  class="select"
-                >
-                  <option v-for="col in metadataColumns" :key="col" :value="col">
-                    {{ col }}
-                  </option>
-                </select>
-                <!-- Cell map applies to both panels -->
-                <SegmentedToggle
-                  v-model="selectedReduction"
-                  hide-single
-                  aria-label="Cell map"
-                  :options="reductionOptions"
-                  class="cell-map-toggle"
-                  title="Cell map (applies to both panels)"
-                />
-              </div>
+            <label class="field">
+              <span class="control-label">Color by</span>
+              <select
+                v-model="selectedMetadataColumn"
+                @change="renderMetadataUMAP"
+                class="select"
+              >
+                <option v-for="col in metadataColumns" :key="col" :value="col">
+                  {{ col }}
+                </option>
+              </select>
             </label>
+            <!-- Cell map applies to both panels -->
+            <span v-if="reductionOptions.length > 1" class="control-label">Map</span>
+            <SegmentedToggle
+              v-model="selectedReduction"
+              hide-single
+              aria-label="Cell map"
+              :options="reductionOptions"
+              class="cell-map-toggle"
+              title="Cell map (applies to both panels)"
+            />
           </div>
 
           <div class="canvas-container">
             <canvas ref="leftCanvas"></canvas>
+            <!-- Cell type labels as text over the map: crisp at any zoom and screen density -->
+            <div class="map-labels" aria-hidden="true">
+              <span
+                v-for="l in leftLabelPositions"
+                :key="l.text"
+                class="map-label"
+                :style="{ left: `${l.x}px`, top: `${l.y}px`, fontSize: `${l.size}px` }"
+                >{{ l.text }}</span
+              >
+            </div>
           </div>
 
           <!-- Always rendered so the canvas above is sized with the legend's space already taken -->
@@ -55,14 +65,14 @@
             :class="{ 'legend-expanded': leftLegendExpanded }"
           >
             <div v-if="metadataLegend.length > 0" class="legend-header">
-              <div class="legend-title">Legend</div>
+              <div class="legend-title">{{ formatLabel(selectedMetadataColumn) }}</div>
               <button
+                type="button"
                 class="legend-toggle"
                 @click.stop="toggleLeftLegend"
-                :title="leftLegendExpanded ? 'Collapse' : 'Expand'"
+                :aria-expanded="leftLegendExpanded.toString()"
               >
-                <span v-if="leftLegendExpanded">▼</span>
-                <span v-else>▲</span>
+                {{ leftLegendExpanded ? "Show less" : "Show all" }}
               </button>
             </div>
             <div class="legend-items">
@@ -101,24 +111,13 @@
           </div>
 
           <!-- Tooltip for Left Panel -->
-          <div
-            v-if="hoveredPoint"
-            class="tooltip"
-            :style="{
-              left: leftTooltipPos.x + 'px',
-              top: leftTooltipPos.y + 'px',
-            }"
-          >
-            <div class="tooltip-header">{{ hoveredPoint.cell_id }}</div>
-            <div
-              v-for="(value, key) in getTooltipData(hoveredPoint)"
-              :key="key"
-              class="tooltip-row"
-            >
-              <span class="tooltip-label" :style="getTooltipLabelStyle(key)"
-                >{{ formatLabel(key) }}:</span
-              >
-              <span class="tooltip-value">{{ formatValue(key, value) }}</span>
+          <div v-if="hoveredPoint" class="tooltip" :style="tooltipStyle">
+            <div class="tooltip-header">Cell {{ hoveredPoint.cell_id }}</div>
+            <div class="tooltip-rows">
+              <template v-for="row in tooltipRows" :key="row.label">
+                <span class="tooltip-label">{{ row.label }}</span>
+                <span class="tooltip-value">{{ row.value }}</span>
+              </template>
             </div>
           </div>
         </div>
@@ -126,33 +125,32 @@
         <!-- Right Panel: Gene Expression UMAP -->
         <div class="panel">
           <div class="controls">
-            <label class="label">
-              Select Assay RNA (Gene Expression):
-              <div class="gene-input-wrapper">
-                <input
-                  v-model="geneSearch"
-                  type="text"
-                  placeholder="Gene name (e.g., CDH9)"
-                  class="gene-input"
-                  list="gene-suggestions"
-                  @input="debouncedSearchGenes"
-                />
-                <datalist id="gene-suggestions">
-                  <option
-                    v-for="gene in geneSuggestions"
-                    :key="gene"
-                    :value="gene"
-                  />
-                </datalist>
-                <button
-                  @click="handleGeneSelect"
-                  :disabled="!geneSearch.trim() || geneLoading"
-                  class="visualize-btn pdw-btn pdw-btn--primary"
-                >
-                  {{ geneLoading ? "Loading..." : "Visualize" }}
-                </button>
-              </div>
+            <label class="field">
+              <span class="control-label" title="RNA assay (gene expression)">Gene</span>
+              <input
+                v-model="geneSearch"
+                type="text"
+                placeholder="Gene name (e.g., CDH9)"
+                class="gene-input"
+                list="gene-suggestions"
+                @input="debouncedSearchGenes"
+              />
             </label>
+            <datalist id="gene-suggestions">
+              <option
+                v-for="gene in geneSuggestions"
+                :key="gene"
+                :value="gene"
+              />
+            </datalist>
+            <button
+              type="button"
+              @click="handleGeneSelect"
+              :disabled="!geneSearch.trim() || geneLoading"
+              class="visualize-btn pdw-btn pdw-btn--primary"
+            >
+              {{ geneLoading ? "Loading..." : "Visualize" }}
+            </button>
           </div>
 
           <div class="canvas-container">
@@ -164,13 +162,22 @@
           </div>
 
           <!-- Always rendered so the canvas above is sized with the legend's space already taken -->
-          <div class="legend">
-            <div v-if="selectedGene && !geneLoading" class="legend-title">Expression Level</div>
-            <div v-if="selectedGene && !geneLoading" class="gradient-bar">
-              <div class="gradient-fill"></div>
-              <div class="gradient-labels">
-                <span>Low</span>
-                <span>High</span>
+          <div class="legend legend-gradient">
+            <div v-if="selectedGene && !geneLoading" class="legend-title">{{ selectedGene }} expression (RNA)</div>
+            <div v-if="selectedGene && !geneLoading" class="gradient-row">
+              <div class="none-key">
+                <span class="none-swatch" :style="{ background: EXPR_NONE_COLOR }"></span>
+                <span>None</span>
+              </div>
+              <div class="gradient-bar">
+                <div
+                  class="gradient-fill"
+                  :style="{ background: `linear-gradient(to right, ${EXPR_LOW_COLOR}, ${EXPR_HIGH_COLOR})` }"
+                ></div>
+                <div class="gradient-labels">
+                  <span>Low</span>
+                  <span>High</span>
+                </div>
               </div>
             </div>
           </div>
@@ -253,6 +260,14 @@ const geneLoading = ref(false);
 
 // Search timeout
 let searchTimeout = null;
+
+// Expression colors (map points and legend): neutral grey for cells with none, then a blue
+// ramp for any expression, from a clear light blue to a bright mid blue, so expressing
+// cells stand out from non-expressing ones even at low levels
+const EXPR_NONE_COLOR = "#c8c8c8";
+const EXPR_LOW_COLOR = "#90c4f2";
+const EXPR_HIGH_COLOR = "#1e88e5";
+const exprColor = d3.interpolateRgb(EXPR_LOW_COLOR, EXPR_HIGH_COLOR);
 
 //WATCHES FOR REFS
 watch(
@@ -416,6 +431,7 @@ async function initWithViewer(viewerInstance) {
 
     reductionOptions.value = manager.value.getReductionOptions();
     stopReductionUpdates?.();
+    stopReductionUpdates?.(); // set up again on Retry
     stopReductionUpdates = manager.value.onReductionsChange?.(() => {
       reductionOptions.value = manager.value.getReductionOptions();
     });
@@ -464,7 +480,7 @@ async function initWithViewer(viewerInstance) {
 }
 
 // Shared engine: the provider's, or one per data URL shared with the other widgets
-useWidgetDataEngine({
+const dataEngine = useWidgetDataEngine({
   dataPath: () => props.dataPath,
   config: () => props.config,
   onReady: initWithViewer,
@@ -473,6 +489,14 @@ useWidgetDataEngine({
     loading.value = false;
   },
 });
+
+// Retry after a failed load: the dataset itself if it never loaded, else this view's data
+function retryLoad() {
+  error.value = null;
+  loading.value = true;
+  if (manager.value) initWithViewer(manager.value);
+  else dataEngine.retry();
+}
 
 onBeforeUnmount(() => {
   stopReductionUpdates?.();
@@ -485,6 +509,8 @@ onBeforeUnmount(() => {
 });
 // Setup resize observers
 function setupResizeObservers() {
+  leftResizeObserver.value?.disconnect();
+  rightResizeObserver.value?.disconnect();
   if (leftCanvas.value) {
     // Observe the panel instead of the canvas container
     leftResizeObserver.value = observeResize(leftCanvas.value.closest(".panel"), () => {
@@ -705,7 +731,7 @@ function rebuildRightPoints() {
     // Use grey color for hidden categories, original color for visible ones
     if (subsetCategories.value.has(categoryValue)) {
       const rgb = d3.color(p.color).rgb();
-      colors.push(rgb.r / 255, rgb.g / 255, rgb.b / 255, 0.8);
+      colors.push(rgb.r / 255, rgb.g / 255, rgb.b / 255, 1);
     } else {
       // Grey color for hidden categories
       colors.push(0.85, 0.85, 0.85, 0.3); // Light grey with low opacity
@@ -721,7 +747,7 @@ function rebuildRightPoints() {
         vec2 c = gl_PointCoord - vec2(0.5);
         float d = length(c);
         if (d > 0.5) discard;
-        float alpha = vColor.a * (1.0 - smoothstep(0.3, 0.5, d));
+        float alpha = vColor.a * (1.0 - smoothstep(0.42, 0.5, d)); // crisp edge: pale colors stay visible
         gl_FragColor = vec4(vColor.rgb, alpha);
       }`,
     vert: `
@@ -762,163 +788,65 @@ function rebuildRightPoints() {
   // Trigger re-render
   renderRightPanel();
 }
-// Draw labels on the left canvas using WebGL
+// Hovered-cell marker diameter in pixels; fixed, so zooming doesn't change it
+const HOVER_MARKER_PX = 20;
+
+// Positions of the cell type labels over the left map, in CSS pixels (drawn as HTML text)
+const leftLabelPositions = shallowRef([]);
+
 function drawLeftLabels(canvas, transform) {
-  if (
-    !canvas ||
-    !leftReglInstance ||
-    !leftXScale ||
-    !leftYScale ||
-    leftLabels.length === 0
-  )
+  if (!canvas || !leftXScale || !leftYScale || leftLabels.length === 0) {
+    leftLabelPositions.value = [];
     return;
-
+  }
   const tr = transform || d3.zoomIdentity;
-
-  // Clean up old textures first
-  leftLabelTextures.forEach((texture) => {
-    try {
-      texture.destroy();
-    } catch (e) {}
-  });
-  leftLabelTextures = [];
-
-  leftLabels.forEach((label) => {
-    if (!subsetCategories.value.has(label.text)) {
-      return;
-    }
-    const px = leftXScale(label.x);
-    const py = leftYScale(label.y);
-
-    // Transform to screen coordinates for visibility check
-    const tX = (2 * tr.x) / canvas.width;
-    const tY = -(2 * tr.y) / canvas.height;
-    const screenX = ((px * tr.k + tX + 1) / 2) * canvas.width;
-    const screenY = ((1 - (py * tr.k + tY)) / 2) * canvas.height;
-
-    // Skip labels that are off-screen
-    if (
-      screenX < -100 ||
-      screenX > canvas.width + 100 ||
-      screenY < -100 ||
-      screenY > canvas.height + 100
-    ) {
-      return;
-    }
-
-    // Calculate font size based on zoom, with limits
-    const baseFontSize = 14;
-    const minFontSize = 14;
-    const maxFontSize = 20;
-    // Direct scaling with zoom (no sqrt dampening)
-    const fontSize = Math.round(
-      Math.max(minFontSize, Math.min(maxFontSize, baseFontSize * tr.k))
-    );
-    const tempCanvas = document.createElement("canvas");
-    const tempCtx = tempCanvas.getContext("2d", { willReadFrequently: true });
-
-    tempCtx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
-    const metrics = tempCtx.measureText(label.text);
-    const textWidth = metrics.width;
-    const textHeight = fontSize;
-    const padding = 4;
-
-    // Size the temp canvas
-    tempCanvas.width = textWidth + padding * 2;
-    tempCanvas.height = textHeight + padding * 2;
-
-    // Redraw (canvas was cleared by resize)
-    tempCtx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
-    tempCtx.textAlign = "center";
-    tempCtx.textBaseline = "middle";
-
-    // Draw background
-    tempCtx.fillStyle = "rgba(255, 255, 255, 0.85)";
-    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-    // Draw border
-    tempCtx.strokeStyle = label.color;
-    tempCtx.lineWidth = 2;
-    tempCtx.strokeRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-    // Draw text
-    tempCtx.fillStyle = label.color;
-    tempCtx.fillText(label.text, tempCanvas.width / 2, tempCanvas.height / 2);
-
-    // Create texture from canvas
-    const texture = leftReglInstance.texture({
-      data: tempCanvas,
-      mag: "linear",
-      min: "linear",
+  // Canvas pixels → CSS pixels, in case the canvas is sized for the screen density
+  const cssPerPx = canvas.clientWidth / canvas.width || 1;
+  const tX = (2 * tr.x) / canvas.width;
+  const tY = -(2 * tr.y) / canvas.height;
+  // Grows with zoom, within limits
+  const size = Math.round(Math.max(14, Math.min(20, 14 * tr.k)));
+  const positions = [];
+  for (const label of leftLabels) {
+    if (!subsetCategories.value.has(label.text)) continue;
+    const x = ((leftXScale(label.x) * tr.k + tX + 1) / 2) * canvas.width;
+    const y = ((1 - (leftYScale(label.y) * tr.k + tY)) / 2) * canvas.height;
+    if (x < 0 || x > canvas.width || y < 0 || y > canvas.height) continue;
+    // Offset by the canvas's place in its (centering) container
+    positions.push({
+      text: label.text,
+      x: canvas.offsetLeft + x * cssPerPx,
+      y: canvas.offsetTop + y * cssPerPx,
+      size,
     });
+  }
+  leftLabelPositions.value = positions;
+}
 
-    leftLabelTextures.push(texture); // Track for cleanup
-
-    // Calculate quad size in NDC space - no additional scaling needed
-    const quadWidth = (tempCanvas.width / canvas.width) * 2;
-    const quadHeight = (tempCanvas.height / canvas.height) * 2;
-
-    // Draw textured quad at 1:1 pixel ratio (no texture scaling)
-    const drawQuad = leftReglInstance({
-      frag: `
-        precision mediump float;
-        varying vec2 vUv;
-        uniform sampler2D texture;
-        void main() {
-          gl_FragColor = texture2D(texture, vUv);
-        }`,
-      vert: `
-        precision mediump float;
-        attribute vec2 position;
-        attribute vec2 uv;
-        varying vec2 vUv;
-        uniform vec2 offset;
-        uniform vec2 size;
-        uniform vec2 translate;
-        void main() {
-          vec2 pos = offset + position * size + translate;
-          gl_Position = vec4(pos, 0, 1);
-          vUv = uv;
-        }`,
-      attributes: {
-        position: [
-          [-0.5, -0.5],
-          [0.5, -0.5],
-          [-0.5, 0.5],
-          [0.5, 0.5],
-        ],
-        uv: [
-          [0, 1],
-          [1, 1],
-          [0, 0],
-          [1, 0],
-        ],
-      },
-      uniforms: {
-        texture: texture,
-        offset: [
-          px * tr.k + (2 * tr.x) / canvas.width,
-          py * tr.k - (2 * tr.y) / canvas.height,
-        ],
-        size: [quadWidth, quadHeight],
-        translate: [0, 0],
-      },
-      primitive: "triangle strip",
-      count: 4,
-      depth: { enable: false },
-      blend: {
-        enable: true,
-        func: {
-          srcRGB: "src alpha",
-          srcAlpha: 1,
-          dstRGB: "one minus src alpha",
-          dstAlpha: 1,
-        },
-      },
-    });
-
-    drawQuad();
-  });
+/**
+ * Scales from map coordinates to the given output ranges, using the same units per pixel on
+ * both axes (distances on a cell map are meaningful, so it mustn't be stretched to fill a
+ * wide box). The map is centered, with a small margin around the outermost cells.
+ * Both panels have the same canvas size, so they get the same scales and the shared zoom
+ * lines up.
+ */
+function equalAspectScales(points, width, height, xRange, yRange) {
+  const MARGIN = 0.02;
+  const [x0, x1] = d3.extent(points, (d) => d.x);
+  const [y0, y1] = d3.extent(points, (d) => d.y);
+  const dx = (x1 - x0 || 1) * (1 + 2 * MARGIN);
+  const dy = (y1 - y0 || 1) * (1 + 2 * MARGIN);
+  // Fraction of each axis the map fills; the tighter axis fills it all
+  const pxPerUnit = Math.min(width / dx, height / dy);
+  const fx = (dx * pxPerUnit) / width;
+  const fy = (dy * pxPerUnit) / height;
+  const squeeze = ([a, b], f) => [(a + b) / 2 - ((b - a) * f) / 2, (a + b) / 2 + ((b - a) * f) / 2];
+  const xMid = (x0 + x1) / 2;
+  const yMid = (y0 + y1) / 2;
+  return {
+    xScale: d3.scaleLinear().domain([xMid - dx / 2, xMid + dx / 2]).range(squeeze(xRange, fx)),
+    yScale: d3.scaleLinear().domain([yMid - dy / 2, yMid + dy / 2]).range(squeeze(yRange, fy)),
+  };
 }
 
 // Render metadata UMAP
@@ -991,17 +919,8 @@ async function renderMetadataUMAP() {
   const regl = leftRegl.value;
   leftReglInstance = regl;
 
-  const xExtent = d3.extent(points, (d) => d.x);
-  const yExtent = d3.extent(points, (d) => d.y);
-  const xPad = (xExtent[1] - xExtent[0]) * 0.05;
-  const yPad = (yExtent[1] - yExtent[0]) * 0.05;
-  xExtent[0] -= xPad;
-  xExtent[1] += xPad;
-  yExtent[0] -= yPad;
-  yExtent[1] += yPad;
-
-  const xScale = d3.scaleLinear().domain(xExtent).range([-1, 1]);
-  const yScale = d3.scaleLinear().domain(yExtent).range([-1, 1]);
+  // Scales -> NDC, with one scale for both axes so the map isn't stretched
+  const { xScale, yScale } = equalAspectScales(points, width, height, [-1, 1], [-1, 1]);
   // Store scales for highlight function
   leftXScale = xScale;
   leftYScale = yScale;
@@ -1214,7 +1133,7 @@ function renderRightPanel() {
     rightRenderScheduled = false;
     const canvas = rightCanvas.value;
     if (!canvas || !rightReglInstance) return;
-    rightReglInstance.clear({ color: [0.97, 0.98, 0.99, 1], depth: 1 });
+    rightReglInstance.clear({ color: [1, 1, 1, 1], depth: 1 });
 
     let scale = 1,
       translate = [0, 0],
@@ -1272,15 +1191,18 @@ function drawRightHighlightedPoint(idx, tr) {
     frag: `
       precision mediump float;
       varying vec4 vColor;
+      uniform float pointSize;
       void main() {
         vec2 c = gl_PointCoord - vec2(0.5);
         float d = length(c);
         if (d > 0.5) discard;
-        if (d > 0.35) gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-        else {
-          float a = vColor.a * (1.0 - smoothstep(0.2, 0.35, d));
-          gl_FragColor = vec4(vColor.rgb, a);
-        }
+        // Hovered cell: dark outer ring, white ring, then the cell's color at full strength,
+        // so it stands out on empty space and on dense clusters alike. Ring widths in pixels.
+        float r = d * pointSize;
+        float edge = pointSize * 0.5;
+        if (r > edge - 2.5) gl_FragColor = vec4(0.1, 0.13, 0.17, 1.0);
+        else if (r > edge - 4.5) gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+        else gl_FragColor = vec4(vColor.rgb, 1.0);
       }`,
     vert: `
       precision mediump float;
@@ -1315,7 +1237,7 @@ function drawRightHighlightedPoint(idx, tr) {
       })(),
     },
     uniforms: {
-      pointSize: Math.max(12, 8 * tr.k),
+      pointSize: HOVER_MARKER_PX, // same size at every zoom
       scale: tr.k,
       translate: [(2 * tr.x) / canvas.width, -(2 * tr.y) / canvas.height],
     },
@@ -1342,7 +1264,7 @@ function renderLeftPanel() {
 
   requestAnimationFrame(() => {
     const canvas = leftCanvas.value;
-    leftReglInstance.clear({ color: [0.97, 0.98, 0.99, 1], depth: 1 });
+    leftReglInstance.clear({ color: [1, 1, 1, 1], depth: 1 });
 
     let scale = 1,
       translate = [0, 0],
@@ -1407,15 +1329,18 @@ function drawLeftHighlightedPoint(idx, tr) {
     frag: `
       precision mediump float;
       varying vec4 vColor;
+      uniform float pointSize;
       void main() {
         vec2 c = gl_PointCoord - vec2(0.5);
         float d = length(c);
         if (d > 0.5) discard;
-        if (d > 0.35) gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-        else {
-          float a = vColor.a * (1.0 - smoothstep(0.2, 0.35, d));
-          gl_FragColor = vec4(vColor.rgb, a);
-        }
+        // Hovered cell: dark outer ring, white ring, then the cell's color at full strength,
+        // so it stands out on empty space and on dense clusters alike. Ring widths in pixels.
+        float r = d * pointSize;
+        float edge = pointSize * 0.5;
+        if (r > edge - 2.5) gl_FragColor = vec4(0.1, 0.13, 0.17, 1.0);
+        else if (r > edge - 4.5) gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+        else gl_FragColor = vec4(vColor.rgb, 1.0);
       }`,
     vert: `
       precision mediump float;
@@ -1450,7 +1375,7 @@ function drawLeftHighlightedPoint(idx, tr) {
       })(),
     },
     uniforms: {
-      pointSize: Math.max(12, 8 * tr.k),
+      pointSize: HOVER_MARKER_PX, // same size at every zoom
       scale: tr.k,
       translate: [(2 * tr.x) / canvas.width, -(2 * tr.y) / canvas.height],
     },
@@ -1518,10 +1443,8 @@ async function renderGeneUMAP() {
       const expr = exprMap.get(d.cell_id) || 0;
       const norm = maxExpr > 0 ? Math.min(expr / maxExpr, 1) : 0;
 
-      // Color scale: gray -> blue gradient
-      const r = Math.round(200 * (1 - norm) + 0 * norm);
-      const g = Math.round(200 * (1 - norm) + 0 * norm);
-      const b = Math.round(200 * (1 - norm) + 255 * norm);
+      // Same colors as the legend: grey for none, light → bright blue for any expression
+      const { r, g, b } = d3.rgb(expr > 0 ? exprColor(norm) : EXPR_NONE_COLOR);
 
       return {
         ...d,
@@ -1531,7 +1454,7 @@ async function renderGeneUMAP() {
         norm,
         color: `rgb(${r}, ${g}, ${b})`,
         originalColor: `rgb(${r}, ${g}, ${b})`, // Store original color
-        opacity: 0.8,
+        opacity: 1,
       };
     });
 
@@ -1554,17 +1477,8 @@ async function renderGeneUMAP() {
     const regl = rightRegl.value;
     rightReglInstance = regl;
 
-    const xExtent = d3.extent(points, (d) => d.x);
-    const yExtent = d3.extent(points, (d) => d.y);
-    const xPad = (xExtent[1] - xExtent[0]) * 0.05;
-    const yPad = (yExtent[1] - yExtent[0]) * 0.05;
-    xExtent[0] -= xPad;
-    xExtent[1] += xPad;
-    yExtent[0] -= yPad;
-    yExtent[1] += yPad;
-
-    const xScale = d3.scaleLinear().domain(xExtent).range([-1, 1]);
-    const yScale = d3.scaleLinear().domain(yExtent).range([-1, 1]);
+    // Scales -> NDC, with one scale for both axes so the map isn't stretched
+    const { xScale, yScale } = equalAspectScales(points, width, height, [-1, 1], [-1, 1]);
 
     // Store scales for highlight function
     rightXScale = xScale;
@@ -1595,7 +1509,7 @@ async function renderGeneUMAP() {
           vec2 c = gl_PointCoord - vec2(0.5);
           float d = length(c);
           if (d > 0.5) discard;
-          float alpha = vColor.a * (1.0 - smoothstep(0.3, 0.5, d));
+          float alpha = vColor.a * (1.0 - smoothstep(0.42, 0.5, d)); // crisp edge: pale colors stay visible
           gl_FragColor = vec4(vColor.rgb, alpha);
         }`,
       vert: `
@@ -1771,44 +1685,83 @@ async function renderGeneUMAP() {
 }
 
 // Tooltip helpers
-function getTooltipData(point) {
-  const data = {};
+// Hover card: the few things a researcher reads first about a cell, not every metadata
+// column. Each row takes the first of its columns the dataset has; at most 8 rows.
+const TOOLTIP_MAX_ROWS = 8;
+const TOOLTIP_FIELDS = [
+  { label: "Donor", keys: ["Donor", "donor_ID", "donor_id", "donor"] },
+  { label: "Sample", keys: ["Sample_name", "sample_name", "sample", "orig.ident"] },
+  { label: "Source study", keys: ["Dataset", "dataset"] },
+  { label: "Sex", keys: ["Sex", "sex"] },
+  { label: "Age", keys: ["Age", "age"] },
+  { label: "Spinal region", keys: ["SpinalRegion", "spinal_region"] },
+  { label: "Genes detected", keys: ["nFeature_RNA"], format: "int" },
+  { label: "RNA counts", keys: ["nCount_RNA"], format: "int" },
+  { label: "Mito %", keys: ["percent.mt"], format: "pct" },
+  { label: "ATAC fragments", keys: ["nCount_ATAC"], format: "int" },
+];
 
-  // Exclude these keys from display
-  const exclude = new Set([
-    "cell_id",
-    "umap_1",
-    "umap_2",
-    "tsne_1",
-    "tsne_2",
-    "x",
-    "y",
-    "color",
-    "opacity",
-    "expr",
-    "norm"
-  ]);
+function formatField(value, format) {
+  if (typeof value !== "number") return String(value);
+  if (format === "int") return Math.round(value).toLocaleString();
+  if (format === "pct") return `${value.toFixed(1)}%`;
+  return formatValue("", value);
+}
 
-  // Add all non-excluded keys
-  Object.keys(point).forEach((k) => {
-    if (!exclude.has(k) && point[k] !== null && point[k] !== undefined) {
-      data[k] = point[k];
+const tooltipRows = computed(() => {
+  const point = hoveredPoint.value;
+  if (!point) return [];
+  const rows = [];
+  const present = (v) => v !== null && v !== undefined && v !== "";
+
+  // What the cell is: the dataset's cell type, and the color-by column if it's another one
+  const cellTypeCol = activeConfig.value.cellTypeColumn;
+  if (cellTypeCol && present(point[cellTypeCol])) {
+    rows.push({ label: "Cell type", value: String(point[cellTypeCol]) });
+  }
+  const colorBy = selectedMetadataColumn.value;
+  if (colorBy && colorBy !== cellTypeCol && present(point[colorBy])) {
+    rows.push({ label: formatLabel(colorBy), value: String(point[colorBy]) });
+  }
+
+  // The selected gene's expression in this cell
+  if (selectedGene.value && rightPointsData.value.length) {
+    const r = rightPointsData.value.find((p) => p.cell_id === point.cell_id);
+    if (r) {
+      rows.push({
+        label: `${selectedGene.value} (RNA)`,
+        value: r.expr > 0 ? formatValue("", r.expr) : "Not detected",
+      });
     }
-  });
+  }
 
-  return data;
-}
-function getTooltipLabelStyle(key) {
-  return {};
-}
+  for (const field of TOOLTIP_FIELDS) {
+    if (rows.length >= TOOLTIP_MAX_ROWS) break;
+    const key = field.keys.find((k) => present(point[k]));
+    if (key) rows.push({ label: field.label, value: formatField(point[key], field.format) });
+  }
+  return rows.slice(0, TOOLTIP_MAX_ROWS);
+});
+
+// Next to the cursor, flipped left / up near the window's edges so it stays on screen
+const TOOLTIP_WIDTH = 320;
+const TOOLTIP_HEIGHT_ESTIMATE = 260;
+const tooltipStyle = computed(() => {
+  const { x, y } = leftTooltipPos.value;
+  const flipX = x + TOOLTIP_WIDTH > window.innerWidth - 8;
+  const flipY = y + TOOLTIP_HEIGHT_ESTIMATE > window.innerHeight - 8;
+  return {
+    left: `${flipX ? x - TOOLTIP_WIDTH - 30 : x}px`,
+    top: `${flipY ? Math.max(8, y - TOOLTIP_HEIGHT_ESTIMATE) : y}px`,
+  };
+});
+
 function formatLabel(key) {
   return key
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
 }
-const gene1Color = ref("#ff0000");
-const gene2Color = ref("#0000ff");
 function formatValue(key, value) {
   if (typeof value === "number") {
     if (key === selectedGene.value || key === selectedMetadataColumn.value)
@@ -1825,36 +1778,41 @@ function formatValue(key, value) {
 .umap-comparison-dashboard {
   height: 100%;
 }
+/* The widget card is the frame: the two halves have no borders or backgrounds of their own,
+   just one divider between them */
 .both-pannels {
   display: flex;
   flex-direction: row;
-  gap: 16px;
   flex: 1;
   min-height: 0;
   width: 100%;
-  background: var(--pdw-surface-muted);
 }
 .dashboard {
   display: flex;
   flex-direction: column;
   height: 100%;
   width: 100%;
+  padding: 8px 16px 16px;
+  box-sizing: border-box;
 }
 
 .panel {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0;
-  background: var(--pdw-surface);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
-  padding: 12px 16px;
+  gap: 8px;
   min-height: 0;
   width: 50%;
   box-sizing: border-box;
   overflow: hidden;
   position: relative;
+}
+.panel:first-child {
+  padding-right: 16px;
+  border-right: 1px solid var(--pdw-border);
+}
+.panel + .panel {
+  padding-left: 16px;
 }
 
 
@@ -1863,7 +1821,7 @@ function formatValue(key, value) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #94a3b8;
+  color: var(--pdw-text-muted);
   font-size: 14px;
   font-style: italic;
   width: 100%;
@@ -1871,60 +1829,58 @@ function formatValue(key, value) {
 
 .controls {
   display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
+  min-width: 0;
 }
 
-.label {
+.field {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
   min-width: 0;
+}
+
+.control-label {
   font-size: 14px;
   font-weight: 600;
-  color: var(--pdw-text);
+  color: var(--pdw-text-muted);
   white-space: nowrap;
 }
 
 .select {
   flex: 1;
   min-width: 0;
-  padding: 10px 14px;
-  border: 2px solid var(--pdw-border);
-  border-radius: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--pdw-border);
+  border-radius: var(--pdw-radius);
   font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color 0.15s;
 }
 
 .select:hover {
-  border-color: #cbd5e1;
+  border-color: var(--pdw-text-muted);
 }
 
 .select:focus {
   outline: none;
   border-color: var(--pdw-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
-}
-
-.gene-input-wrapper {
-  display: flex;
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
 }
 
 .gene-input {
   flex: 1;
-  padding: 10px 14px;
-  border: 2px solid var(--pdw-border);
-  border-radius: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--pdw-border);
+  border-radius: var(--pdw-radius);
   font-size: 14px;
   background: var(--pdw-surface);
   color: var(--pdw-text);
-  transition: all 0.2s;
+  transition: border-color 0.15s;
   min-width: 0;
   box-sizing: border-box;
 }
@@ -1934,18 +1890,22 @@ function formatValue(key, value) {
 }
 
 .gene-input:hover {
-  border-color: #cbd5e1;
+  border-color: var(--pdw-text-muted);
 }
 
 .gene-input:focus {
   outline: none;
   border-color: var(--pdw-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pdw-primary) 10%, transparent);
+}
+
+.visualize-btn {
+  align-self: stretch;
+  flex-shrink: 0;
 }
 
 .cell-map-toggle {
   align-self: stretch;
-  border-radius: 2px;
+  flex-shrink: 0;
 }
 .cell-map-toggle :deep(button) {
   padding: 0 14px;
@@ -1953,19 +1913,14 @@ function formatValue(key, value) {
 }
 
 
-
-
+/* No frame or padding: the map uses all of its space */
 .canvas-container {
   flex: 1;
   position: relative;
-  background: var(--pdw-surface);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
   min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 12px;
 }
 
 .canvas-container canvas {
@@ -1979,30 +1934,31 @@ function formatValue(key, value) {
   cursor: grabbing;
 }
 
+/* Fixed height, and the same in both panels, so the two maps are the same size (the shared
+   zoom relies on that) and the legend appearing never changes the canvas area */
+/* A rule above each legend separates it from its map; both are the same height so the
+   rules line up across the two halves */
 .legend {
-  background: var(--pdw-surface);
-  border: 1px solid var(--pdw-border);
-  border-radius: 2px;
-  padding: 10px 12px;
-  /* fixed, so the legend appearing never changes the canvas area */
-  height: 120px;
+  padding: 8px;
+  border-top: 1px solid var(--pdw-border);
+  height: 112px;
   flex-shrink: 0;
-  margin-top: 12px;
   overflow-y: auto;
-  transition: all 0.3s ease;
   position: relative;
   z-index: 5;
   box-sizing: border-box;
+  background: var(--pdw-surface);
 }
 
+/* Expanded: lies over the bottom of the map, separated by a rule rather than a shadow */
 .legend-expanded {
   position: absolute;
-  bottom: 12px;
-  left: 16px;
+  bottom: 0;
+  left: 0;
   right: 16px;
   height: 60%;
   max-height: calc(100% - 200px);
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+  border-top: 1px solid var(--pdw-border);
   z-index: 10;
 }
 
@@ -2010,87 +1966,73 @@ function formatValue(key, value) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
 .legend-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--pdw-text);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: var(--pdw-text-muted);
+  margin: 0 0 6px;
+}
+.legend-header .legend-title {
   margin: 0;
 }
 
 .legend-toggle {
   background: transparent;
   border: 1px solid var(--pdw-border);
-  border-radius: 4px;
-  padding: 4px 8px;
+  border-radius: var(--pdw-radius);
+  padding: 2px 8px;
   cursor: pointer;
   color: var(--pdw-text-muted);
   font-size: 14px;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 30px;
-  height: 24px;
+  transition: border-color 0.15s, color 0.15s;
+  white-space: nowrap;
 }
 
 .legend-toggle:hover {
-  background: var(--pdw-surface-muted);
-  border-color: var(--pdw-primary);
-  color: var(--pdw-primary);
+  border-color: var(--pdw-text-muted);
+  color: var(--pdw-text);
 }
 
+.legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
 .legend-item {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 14px;
-  color: var(--pdw-text-muted);
+  color: var(--pdw-text);
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-.legend-items {
-  display: flex;
-  flex-wrap: wrap;
-}
-.legend-item:hover {
-  background: var(--pdw-surface-muted);
 }
 
+/* Flat square swatches; click to show/hide that category */
 .legend-color {
-  width: 20px;
-  height: 20px;
-  border-radius: 2px;
-  border: 2px solid;
+  width: 16px;
+  height: 16px;
+  border: 1px solid;
+  box-sizing: border-box;
   flex-shrink: 0;
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
   cursor: pointer;
 }
 
 .legend-color-hidden {
-  background: white !important;
-  opacity: 0.6;
+  background: var(--pdw-surface) !important;
+  border-color: var(--pdw-text-muted) !important;
 }
 
 .legend-x {
   color: var(--pdw-text-muted);
-  font-size: 14px;
-  font-weight: bold;
+  font-size: 12px;
   line-height: 1;
-}
-
-.legend-label {
-  font-weight: 500;
 }
 
 .legend-link {
@@ -2100,20 +2042,19 @@ function formatValue(key, value) {
 
 .legend-link:hover {
   text-decoration: underline;
-  color: var(--pdw-primary);
 }
 
 .tooltip {
   position: fixed;
   background: var(--pdw-surface);
-  border: 2px solid var(--pdw-primary);
-  border-radius: 6px;
-  padding: 12px;
+  border: 1px solid var(--pdw-border);
+  border-radius: var(--pdw-radius);
+  padding: 8px;
   pointer-events: none;
   z-index: 10000;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  min-width: 200px;
-  max-width: 300px;
+  width: 320px;
+  box-sizing: border-box;
   font-size: 14px;
   backdrop-filter: blur(8px);
   background: rgba(255, 255, 255, 0.98);
@@ -2121,20 +2062,20 @@ function formatValue(key, value) {
 }
 
 .tooltip-header {
-  font-weight: 700;
+  font-weight: 600;
   font-size: 14px;
-  color: var(--pdw-text);
+  color: var(--pdw-text-muted);
+  overflow-wrap: anywhere;
   margin-bottom: 6px;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--pdw-border);
 }
 
-.tooltip-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 2px 0;
-  gap: 8px;
+/* Label column sized to the longest label; values wrap inside the card */
+.tooltip-rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
 }
 
 .tooltip-label {
@@ -2146,23 +2087,67 @@ function formatValue(key, value) {
 .tooltip-value {
   font-weight: 500;
   color: var(--pdw-text);
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
-.tooltip-gene {
-  border-color: #0000ff;
+/* Expression scale: centered under its map, two-thirds of its width */
+.legend-gradient {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-
+/* "None" swatch, then the Low → High bar; together two-thirds of the width */
+.gradient-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  width: 66%;
+}
+.none-key {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 16px;
+  font-size: 14px;
+  color: var(--pdw-text-muted);
+  flex-shrink: 0;
+}
+.none-swatch {
+  width: 16px;
+  height: 16px;
+}
 .gradient-bar {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
+  flex: 1;
 }
 
+.map-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+/* Centered on the cluster, with a halo in the background color so it reads over points */
+.map-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-weight: 600;
+  color: var(--pdw-text);
+  white-space: nowrap;
+  line-height: 1;
+  text-shadow:
+    0 0 2px var(--pdw-surface),
+    0 0 2px var(--pdw-surface),
+    0 0 3px var(--pdw-surface),
+    0 0 4px var(--pdw-surface);
+}
+
+/* Background set inline from the same colors as the map points */
 .gradient-fill {
-  height: 20px;
-  background: linear-gradient(to right, #c8c8c8 0%, #0000ff 100%);
-  border-radius: 2px;
-  border: 1px solid var(--pdw-border);
+  height: 16px;
 }
 
 .gradient-labels {
@@ -2170,7 +2155,6 @@ function formatValue(key, value) {
   justify-content: space-between;
   font-size: 14px;
   color: var(--pdw-text-muted);
-  font-weight: 500;
 }
 
 .loading-container {
@@ -2192,8 +2176,8 @@ function formatValue(key, value) {
 }
 
 .loading-text {
-  margin-top: 20px;
-  font-size: 16px;
+  margin-top: 16px;
+  font-size: 14px;
   color: var(--pdw-text-muted);
 }
 
@@ -2225,7 +2209,7 @@ function formatValue(key, value) {
   height: 100vh;
   background: #fff3cd;
   border: 1px solid #ffc107;
-  padding: 20px;
+  padding: 16px;
   color: #856404;
 }
 
@@ -2236,6 +2220,10 @@ function formatValue(key, value) {
   100% {
     transform: rotate(360deg);
   }
+}
+
+.retry-btn {
+  margin-left: 8px;
 }
 </style>
 ../dataManager

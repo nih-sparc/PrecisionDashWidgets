@@ -4,6 +4,7 @@
 
 | PrecisionDashWidgets | PennsieveDashboard | SparcDashWidgets | Notes |
 |----------------------|--------------------|------------------|-------|
+| >= 1.3.0             | >= 1.0.0           | >= 1.5.1         | Chromatin + Linked Peaks share filters, selection and zoom through the store: hosts that reset selections on a dataset switch should also call `resetLinkFilters()` and `setChromatinZoom(null)`. At 1000 px+ wide the two widgets put their controls in a left column (stack them full width) |
 | >= 1.2.0             | >= 1.0.0           | >= 1.5.1         | Colors follow the host theme (`--el-color-primary`, `--dash-*`); pages can override with `--precision-*` (see [Theming](#theming)) |
 | >= 1.1.0             | >= 1.0.0           | >= 1.5.1         | Host installs `@pennsieve-viz/core` ^0.5.0 (now a peer). Optional `services.cloudfront` (a ref) signs data requests |
 | >= 1.0.0             | >= 1.0.0           | >= 1.0.0         | `s3Url`/`apiUrl` removed — use `services` instead |
@@ -316,6 +317,8 @@ provide(DASHBOARD_GLOBAL_VARS_KEY, {
 ```
 
 **Resolution order:** `dataPath` prop > injected `services.s3Url` > built-in default URL.
+
+**Signed data (CloudFront):** pass `services.cloudfront` as a ref that you keep renewed (for example from `useViewerAssets` in `@pennsieve-viz/core`) and `services.refreshCloudfront`, a function that renews it now (`useViewerAssets`' `refresh`). Widgets call `refreshCloudfront` when the credentials have expired or a file comes back 403. Renewal timers pause while a computer sleeps, so without it a page left open overnight can't load new data.
 
 ### Accessing Shared State
 

@@ -30,9 +30,12 @@ export const DATASET_CONFIG_KEY = Symbol("dataset-config");
  * the dataset's manifest and takes its embeddings from `config` instead of
  * fetching manifest.json a second time.
  *
- * @param {{ dataUrl: Ref<string|null>, config: Ref<object>, configLoading?: Ref<boolean>, getCloudfront?: () => object|null }} options
+ * `renewCloudfront` renews the credentials now (useViewerAssets' `refresh`); downloads use
+ * it when the credentials have expired.
+ *
+ * @param {{ dataUrl: Ref<string|null>, config: Ref<object>, configLoading?: Ref<boolean>, getCloudfront?: () => object|null, renewCloudfront?: () => Promise<unknown> }} options
  */
-export function useSharedDataEngine({ dataUrl, config, configLoading, getCloudfront }) {
+export function useSharedDataEngine({ dataUrl, config, configLoading, getCloudfront, renewCloudfront }) {
   const dataUrlRef = isRef(dataUrl) ? dataUrl : toRef(dataUrl);
   const configRef = isRef(config) ? config : toRef(config);
 
@@ -59,6 +62,7 @@ export function useSharedDataEngine({ dataUrl, config, configLoading, getCloudfr
     const cfg = configRef.value;
     return {
       getCloudfront,
+      renewCloudfront,
       // Embeddings and chromatin settings from the manifest, when there is one
       ...(cfg?.embeddings && { embeddings: cfg.embeddings, default_embedding: cfg.default_embedding }),
       ...(cfg?.chromatin && { chromatin: cfg.chromatin }),
@@ -109,10 +113,16 @@ export function useSharedDataEngine({ dataUrl, config, configLoading, getCloudfr
 
   onScopeDispose(dropViewer);
 
-  // Provide to descendants
-  provide(DATA_ENGINE_KEY, { viewer, loading, error });
+  // Load the dataset again after a failure (a widget's Retry button)
+  function retry() {
+    if (viewer.value || loading.value) return;
+    createViewer(dataUrlRef.value);
+  }
 
-  return { viewer, loading, error };
+  // Provide to descendants
+  provide(DATA_ENGINE_KEY, { viewer, loading, error, retry });
+
+  return { viewer, loading, error, retry };
 }
 
 /**
@@ -123,6 +133,16 @@ export function useSharedDataEngine({ dataUrl, config, configLoading, getCloudfr
 export function useServicesCloudfront() {
   const globalVars = inject(DASHBOARD_GLOBAL_VARS_KEY, null);
   return () => unref(unref(globalVars?.services)?.cloudfront) ?? null;
+}
+
+/**
+ * Renews the credentials now, through the host's optional `services.refreshCloudfront`
+ * (useViewerAssets' `refresh`). Data downloads call it when the credentials have expired
+ * or a file comes back 403. Call during setup.
+ */
+export function useServicesCloudfrontRenew() {
+  const globalVars = inject(DASHBOARD_GLOBAL_VARS_KEY, null);
+  return () => unref(globalVars?.services)?.refreshCloudfront?.();
 }
 
 /**
@@ -168,7 +188,8 @@ function acquireWidgetEngine(url, config) {
  * The data engine for a widget. Under a provider (useSharedDataEngine, e.g. the demo
  * App.vue) it uses the provider's engine; otherwise it shares one engine per data URL with
  * every other widget on the page. Call during setup. `onReady(viewer)` runs once, after the
- * widget has mounted; `onError(message)` runs if the data can't be loaded.
+ * widget has mounted; `onError(message)` runs if the data can't be loaded. Returns
+ * `{ retry }`, which loads the data again after an error.
  *
  * @param {{
  *   dataPath: string | Ref<string|null> | (() => string|null),
@@ -180,6 +201,7 @@ function acquireWidgetEngine(url, config) {
 export function useWidgetDataEngine({ dataPath, config, onReady, onError }) {
   const provided = inject(DATA_ENGINE_KEY, null);
   const getCloudfront = useServicesCloudfront();
+  const renewCloudfront = useServicesCloudfrontRenew();
   const mounted = ref(false);
   let active = true;
   let started = false;
@@ -203,15 +225,32 @@ export function useWidgetDataEngine({ dataPath, config, onReady, onError }) {
     release?.();
   });
 
+  function acquire(url) {
+    const engine = acquireWidgetEngine(url, { ...(toValue(config) || {}), getCloudfront, renewCloudfront });
+    release = engine.release;
+    engine.viewer.then(start, fail);
+  }
+
   if (provided) {
     watch([provided.viewer, mounted], ([viewer, isMounted]) => isMounted && start(viewer));
     watch(provided.error, (err) => err && fail(err));
   } else {
     watch([() => toValue(dataPath), mounted], ([url, isMounted]) => {
       if (!isMounted || !url || release) return;
-      const engine = acquireWidgetEngine(url, { ...(toValue(config) || {}), getCloudfront });
-      release = engine.release;
-      engine.viewer.then(start, fail);
+      acquire(url);
     }, { immediate: true });
   }
+
+  // After a failed load: try again. A failed engine isn't kept in the shared cache, so
+  // re-acquiring starts a fresh one (or joins one another widget has started since).
+  function retry() {
+    if (!active || started) return;
+    if (provided) return provided.retry?.();
+    release?.();
+    release = null;
+    const url = toValue(dataPath);
+    if (url) acquire(url);
+  }
+
+  return { retry };
 }
