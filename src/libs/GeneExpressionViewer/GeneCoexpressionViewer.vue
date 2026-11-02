@@ -324,18 +324,16 @@
           <div
             v-if="hoveredPoint"
             class="tooltip"
-            :style="{ left: tooltipPos.x + 'px', top: tooltipPos.y + 'px' }"
+            :style="cardStyle(tooltipPos)"
           >
-            <div class="tooltip-header">ID: {{ hoveredPoint.cell_id }}</div>
-            <div
-              v-for="(value, key) in getTooltipData(hoveredPoint)"
-              :key="key"
-              class="tooltip-row"
-            >
-              <span class="tooltip-label" :style="getTooltipLabelStyle(key)"
-                >{{ formatLabel(key) }}:</span
-              >
-              <span class="tooltip-value">{{ formatValue(key, value) }}</span>
+            <div class="tooltip-header">Cell {{ hoveredPoint.cell_id }}</div>
+            <div class="tooltip-rows">
+              <template v-for="row in tooltipRows" :key="row.label">
+                <span class="tooltip-label" :style="row.color ? { color: row.color } : null">{{
+                  row.label
+                }}</span>
+                <span class="tooltip-value">{{ row.value }}</span>
+              </template>
             </div>
           </div>
         </div>
@@ -365,6 +363,7 @@ import createRegl from "regl";
 import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
 import SegmentedToggle from "../shared/SegmentedToggle.vue";
+import { HOVER_MARKER_PX, HOVER_MARKER_FRAG, cellCardRows, formatExpression, cardStyle } from "../shared/cellHover.js";
 
 // Props
 const props = defineProps({
@@ -420,9 +419,11 @@ const gene2Data = ref(null);
 const genesPending = computed(() => loading.value && !!viewer.value);
 
 // Colors
-// Colour-blind-safe defaults (Okabe–Ito vermillion and blue; a reddish purple for both)
-const gene1Color = ref("#D55E00");
-const gene2Color = ref("#0072B2");
+// Colour-blind-safe pair (orange vs blue), a little brighter than Okabe–Ito's vermillion
+// and blue so small dots read on the map; a reddish purple for both. The blue matches
+// Side By Side's expression scale.
+const gene1Color = ref("#EE6A10");
+const gene2Color = ref("#1E88E5");
 const coexpressColor = ref("#B4459F");
 const noExpressionColor = ref("#CCCCCC");
 
@@ -753,15 +754,13 @@ async function renderChart() {
 
     let zIndex = 0,
       opacity = 1;
+    // Expressing cells drawn on top, at full strength
     if (hasGene1 && hasGene2) {
       zIndex = 3;
-      opacity = 0.9;
     } else if (hasGene1) {
       zIndex = 2;
-      opacity = 0.8;
     } else if (hasGene2) {
       zIndex = 1;
-      opacity = 0.8;
     }
 
     const color = `rgb(${clamp255(mixedR)}, ${clamp255(mixedG)}, ${clamp255(
@@ -881,7 +880,7 @@ async function renderChart() {
         vec2 c = gl_PointCoord - vec2(0.5);
         float d = length(c);
         if (d > 0.5) discard;
-        float alpha = vColor.a * (1.0 - smoothstep(0.3, 0.5, d));
+        float alpha = vColor.a * (1.0 - smoothstep(0.42, 0.5, d)); // crisp edge: small dots keep their color
         gl_FragColor = vec4(vColor.rgb, alpha);
       }`,
     vert: `
@@ -1046,19 +1045,7 @@ async function renderChart() {
     const py = yScale(p.y);
 
     const highlightDraw = regl({
-      frag: `
-        precision mediump float;
-        varying vec4 vColor;
-        void main() {
-          vec2 c = gl_PointCoord - vec2(0.5);
-          float d = length(c);
-          if (d > 0.5) discard;
-          if (d > 0.35) gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-          else {
-            float a = vColor.a * (1.0 - smoothstep(0.2, 0.35, d));
-            gl_FragColor = vec4(vColor.rgb, a);
-          }
-        }`,
+      frag: HOVER_MARKER_FRAG,
       vert: `
         precision mediump float;
         attribute vec2 position;
@@ -1092,7 +1079,7 @@ async function renderChart() {
         })(),
       },
       uniforms: {
-        pointSize: Math.max(12, 8 * tr.k),
+        pointSize: HOVER_MARKER_PX, // same size at every zoom
         scale: tr.k,
         translate: [(2 * tr.x) / canvas.width, -(2 * tr.y) / canvas.height],
       },
@@ -1243,54 +1230,17 @@ function renderGradientLegend() {
 }
 
 // Tooltip helpers
-function getTooltipData(point) {
-  const data = {};
-  if (point.cell_type) data.cell_type = point.cell_type;
-  data[gene1.value] = point.expr1;
-  data[gene2.value] = point.expr2;
-  const exclude = new Set([
-    "cell_id",
-    "umap_1",
-    "umap_2",
-    "tsne_1",
-    "tsne_2",
-    "x",
-    "y",
-    "color",
-    "zIndex",
-    "opacity",
-    "expr1",
-    "expr2",
-    "norm1",
-    "norm2",
+// Hover card: cell type and both genes' expression, then dataset fields (shared with
+// Side By Side), 8 rows at most
+const tooltipRows = computed(() => {
+  const p = hoveredPoint.value;
+  if (!p) return [];
+  return cellCardRows(p.cell, [
+    { label: "Cell type", value: p.cell_type },
+    { label: `${gene1.value} (RNA)`, value: formatExpression(p.expr1), color: gene1Color.value },
+    { label: `${gene2.value} (RNA)`, value: formatExpression(p.expr2), color: gene2Color.value },
   ]);
-  const cell = point.cell || {};
-  Object.keys(cell).forEach((k) => {
-    if (!exclude.has(k) && cell[k] !== null && cell[k] !== undefined)
-      data[k] = cell[k];
-  });
-  return data;
-}
-function getTooltipLabelStyle(key) {
-  if (key === gene1.value) return { color: gene1Color.value };
-  if (key === gene2.value) return { color: gene2Color.value };
-  return {};
-}
-function formatLabel(key) {
-  return key
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-function formatValue(key, value) {
-  if (typeof value === "number") {
-    if (key === gene1.value || key === gene2.value) return value.toFixed(3);
-    if (value < 0.01 && value > 0) return value.toExponential(2);
-    if (Math.abs(value) > 1000) return value.toLocaleString();
-    return value.toFixed(2);
-  }
-  return value;
-}
+});
 
 // Update on palette / boost changes
 async function updateVisualization() {
@@ -1568,33 +1518,33 @@ async function updateVisualization() {
 .tooltip {
   position: fixed;
   background: var(--pdw-surface);
-  border: 2px solid var(--pdw-primary);
+  border: 1px solid var(--pdw-border);
   border-radius: var(--pdw-radius);
-  padding: 12px;
+  padding: 8px;
   pointer-events: none;
   z-index: 10000;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  min-width: 200px;
-  max-width: 300px;
+  width: 320px;
+  box-sizing: border-box;
   font-size: 14px;
   backdrop-filter: blur(8px);
   background: rgba(255, 255, 255, 0.98);
   line-height: 1.2;
 }
 .tooltip-header {
-  font-weight: 700;
+  font-weight: 600;
   font-size: 14px;
-  color: var(--pdw-text);
+  color: var(--pdw-text-muted);
+  overflow-wrap: anywhere;
   margin-bottom: 6px;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--pdw-border);
 }
-.tooltip-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 2px 0;
-  gap: 8px;
+/* Label column sized to the longest label; values wrap inside the card */
+.tooltip-rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
 }
 .tooltip-label {
   font-weight: 600;
@@ -1604,6 +1554,8 @@ async function updateVisualization() {
 .tooltip-value {
   font-weight: 500;
   color: var(--pdw-text);
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .legend-container {

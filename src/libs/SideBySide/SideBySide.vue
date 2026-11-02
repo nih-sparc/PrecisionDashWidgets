@@ -201,6 +201,7 @@ import createRegl from "regl";
 import { useDatasetActiveConfig, useWidgetDataEngine } from "../../composables/useSharedDataEngine.js";
 import { useKeepAliveGate } from "../../composables/useKeepAliveGate.js";
 import SegmentedToggle from "../shared/SegmentedToggle.vue";
+import { HOVER_MARKER_PX, HOVER_MARKER_FRAG, cellCardRows, formatExpression, cardStyle } from "../shared/cellHover.js";
 import { getMetadataColumns, getCategoricalColumns, getExternalLink } from "../../config/datasetConfig.js";
 
 // Props
@@ -788,9 +789,6 @@ function rebuildRightPoints() {
   // Trigger re-render
   renderRightPanel();
 }
-// Hovered-cell marker diameter in pixels; fixed, so zooming doesn't change it
-const HOVER_MARKER_PX = 20;
-
 // Positions of the cell type labels over the left map, in CSS pixels (drawn as HTML text)
 const leftLabelPositions = shallowRef([]);
 
@@ -1184,26 +1182,14 @@ function drawRightHighlightedPoint(idx, tr) {
 
   const canvas = rightCanvas.value;
   const p = rightPointsData.value[idx];
+  // The cell's cell type color, as on the left map, so both maps mark it the same way
+  const markerColor =
+    leftPointsData.value.find((q) => q.cell_id === p.cell_id)?.color ?? p.color;
   const px = rightXScale(p.x);
   const py = rightYScale(p.y);
 
   const highlightDraw = rightReglInstance({
-    frag: `
-      precision mediump float;
-      varying vec4 vColor;
-      uniform float pointSize;
-      void main() {
-        vec2 c = gl_PointCoord - vec2(0.5);
-        float d = length(c);
-        if (d > 0.5) discard;
-        // Hovered cell: dark outer ring, white ring, then the cell's color at full strength,
-        // so it stands out on empty space and on dense clusters alike. Ring widths in pixels.
-        float r = d * pointSize;
-        float edge = pointSize * 0.5;
-        if (r > edge - 2.5) gl_FragColor = vec4(0.1, 0.13, 0.17, 1.0);
-        else if (r > edge - 4.5) gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-        else gl_FragColor = vec4(vColor.rgb, 1.0);
-      }`,
+    frag: HOVER_MARKER_FRAG,
     vert: `
       precision mediump float;
       attribute vec2 position;
@@ -1221,11 +1207,11 @@ function drawRightHighlightedPoint(idx, tr) {
     attributes: {
       position: [px, py],
       color: (() => {
-        if (p.color.startsWith("#")) {
-          const rgb = hexToRgb(p.color);
+        if (markerColor.startsWith("#")) {
+          const rgb = hexToRgb(markerColor);
           return [...rgb, p.opacity];
         }
-        const m = p.color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+        const m = markerColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
         return m
           ? [
               parseInt(m[1]) / 255,
@@ -1326,22 +1312,7 @@ function drawLeftHighlightedPoint(idx, tr) {
   const py = leftYScale(p.y);
 
   const highlightDraw = leftReglInstance({
-    frag: `
-      precision mediump float;
-      varying vec4 vColor;
-      uniform float pointSize;
-      void main() {
-        vec2 c = gl_PointCoord - vec2(0.5);
-        float d = length(c);
-        if (d > 0.5) discard;
-        // Hovered cell: dark outer ring, white ring, then the cell's color at full strength,
-        // so it stands out on empty space and on dense clusters alike. Ring widths in pixels.
-        float r = d * pointSize;
-        float edge = pointSize * 0.5;
-        if (r > edge - 2.5) gl_FragColor = vec4(0.1, 0.13, 0.17, 1.0);
-        else if (r > edge - 4.5) gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-        else gl_FragColor = vec4(vColor.rgb, 1.0);
-      }`,
+    frag: HOVER_MARKER_FRAG,
     vert: `
       precision mediump float;
       attribute vec2 position;
@@ -1685,76 +1656,26 @@ async function renderGeneUMAP() {
 }
 
 // Tooltip helpers
-// Hover card: the few things a researcher reads first about a cell, not every metadata
-// column. Each row takes the first of its columns the dataset has; at most 8 rows.
-const TOOLTIP_MAX_ROWS = 8;
-const TOOLTIP_FIELDS = [
-  { label: "Donor", keys: ["Donor", "donor_ID", "donor_id", "donor"] },
-  { label: "Sample", keys: ["Sample_name", "sample_name", "sample", "orig.ident"] },
-  { label: "Source study", keys: ["Dataset", "dataset"] },
-  { label: "Sex", keys: ["Sex", "sex"] },
-  { label: "Age", keys: ["Age", "age"] },
-  { label: "Spinal region", keys: ["SpinalRegion", "spinal_region"] },
-  { label: "Genes detected", keys: ["nFeature_RNA"], format: "int" },
-  { label: "RNA counts", keys: ["nCount_RNA"], format: "int" },
-  { label: "Mito %", keys: ["percent.mt"], format: "pct" },
-  { label: "ATAC fragments", keys: ["nCount_ATAC"], format: "int" },
-];
-
-function formatField(value, format) {
-  if (typeof value !== "number") return String(value);
-  if (format === "int") return Math.round(value).toLocaleString();
-  if (format === "pct") return `${value.toFixed(1)}%`;
-  return formatValue("", value);
-}
-
+// Hover card: what the cell is and the selected gene's expression, then dataset fields
+// (shared with Gene CoExpression), 8 rows at most
 const tooltipRows = computed(() => {
   const point = hoveredPoint.value;
   if (!point) return [];
-  const rows = [];
-  const present = (v) => v !== null && v !== undefined && v !== "";
-
-  // What the cell is: the dataset's cell type, and the color-by column if it's another one
+  const leading = [];
   const cellTypeCol = activeConfig.value.cellTypeColumn;
-  if (cellTypeCol && present(point[cellTypeCol])) {
-    rows.push({ label: "Cell type", value: String(point[cellTypeCol]) });
-  }
+  if (cellTypeCol) leading.push({ label: "Cell type", value: point[cellTypeCol] });
   const colorBy = selectedMetadataColumn.value;
-  if (colorBy && colorBy !== cellTypeCol && present(point[colorBy])) {
-    rows.push({ label: formatLabel(colorBy), value: String(point[colorBy]) });
+  if (colorBy && colorBy !== cellTypeCol) {
+    leading.push({ label: formatLabel(colorBy), value: point[colorBy] });
   }
-
-  // The selected gene's expression in this cell
   if (selectedGene.value && rightPointsData.value.length) {
     const r = rightPointsData.value.find((p) => p.cell_id === point.cell_id);
-    if (r) {
-      rows.push({
-        label: `${selectedGene.value} (RNA)`,
-        value: r.expr > 0 ? formatValue("", r.expr) : "Not detected",
-      });
-    }
+    if (r) leading.push({ label: `${selectedGene.value} (RNA)`, value: formatExpression(r.expr) });
   }
-
-  for (const field of TOOLTIP_FIELDS) {
-    if (rows.length >= TOOLTIP_MAX_ROWS) break;
-    const key = field.keys.find((k) => present(point[k]));
-    if (key) rows.push({ label: field.label, value: formatField(point[key], field.format) });
-  }
-  return rows.slice(0, TOOLTIP_MAX_ROWS);
+  return cellCardRows(point, leading);
 });
 
-// Next to the cursor, flipped left / up near the window's edges so it stays on screen
-const TOOLTIP_WIDTH = 320;
-const TOOLTIP_HEIGHT_ESTIMATE = 260;
-const tooltipStyle = computed(() => {
-  const { x, y } = leftTooltipPos.value;
-  const flipX = x + TOOLTIP_WIDTH > window.innerWidth - 8;
-  const flipY = y + TOOLTIP_HEIGHT_ESTIMATE > window.innerHeight - 8;
-  return {
-    left: `${flipX ? x - TOOLTIP_WIDTH - 30 : x}px`,
-    top: `${flipY ? Math.max(8, y - TOOLTIP_HEIGHT_ESTIMATE) : y}px`,
-  };
-});
+const tooltipStyle = computed(() => cardStyle(leftTooltipPos.value));
 
 function formatLabel(key) {
   return key
